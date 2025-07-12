@@ -316,8 +316,7 @@ const parse = (str: string): Record<string, any> => {
   }
 
   // if the currentNode doesn't match the root, the tags are not balanced
-  if (depth !== 0 || currentNode !== root)
-    throw new SyntaxError("Unexpected EOF")
+  if (depth !== 0 || currentNode !== root) throw new SyntaxError("Unexpected EOF")
 
   return { [root.key]: _constructObject(root) }
 }
