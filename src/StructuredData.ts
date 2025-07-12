@@ -11,6 +11,9 @@ export default class StructuredData {
     switch (this.originFormat) {
       case "csv":
       case "xml":
+        // return data as is for now
+        // todo: return xml in a more json-friendly format without deeply nested objects
+        return this._data
       case "yaml":
         throw new TypeError("Format not supported")
 
