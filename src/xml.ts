@@ -1,6 +1,7 @@
 import { promises as fs, PathLike } from "fs"
 import DataFormat from "./types/DataFormat"
 import StructuredData from "./StructuredData.js"
+import { replaceHTMLEntities } from "./utils/common.js"
 
 // https://www.w3.org/TR/xml/
 // https://xmlbeans.apache.org/docs/2.0.0/guide/conUnderstandingXMLTokens.html
@@ -26,6 +27,7 @@ interface Node {
   children: Node[]
   key: string
   value: string
+  attributes: Record<string, string>
 }
 
 const _consumeUntil = (
@@ -180,8 +182,10 @@ const _processOpenTag = (
 const _processAttribute = (str: string, i: number, n: number): [Token, i: number] => {
   let c = str[i]
 
-  const isAttributeValue = c == '"'
-  const endCharacter = isAttributeValue ? '"' : "="
+  /* prettier-ignore */
+  const isAttributeValue = c == "\""
+  /* prettier-ignore */
+  const endCharacter = isAttributeValue ? "\"" : "="
 
   if (isAttributeValue) i++
 
@@ -248,68 +252,85 @@ const tokenize = (str: string): Token[] => {
   return tokens
 }
 
-/*const _constructObject = (node: Node): Record<string, any> => {
-  let obj = node.key && node.value ?
-  {
-    [node.key]: node.value,
-  } :
-  { } as Record<string, any>
-
-  console.log(node)
-
-  if (node.children.length == 0) return obj
-  else {
-    for (let child of node.children) {
-      console.log(child.value)
-      obj[child.key] = child.value || _constructObject(child)
+const _constructObject = (root: Node): any => {
+  // recursively construct sub nodes
+  // base case for the recursive function
+  if (root.children.length === 0) {
+    // if there are no attributes just return the value
+    if (Object.keys(root.attributes).length === 0) return root.value
+    else {
+      return {
+        ...root.attributes,
+        value: root.value,
+      }
     }
-    return obj
+  } else {
+    let children = [] as any[]
+    for (let child of root.children) {
+      children.push({ [child.key]: _constructObject(child) })
+    }
+    return children
   }
 }
 
 const parse = (str: string): Record<string, any> => {
   const tokens = tokenize(str)
-
-  let root = {
-    children: [] as Node[]
+  const root = {
+    parent: null,
+    children: [] as Node[],
+    attributes: {},
   } as Node
+  // to check if the tags are balanced
+  let depth = 1
 
-  let currentParent: Node | null = root
-  let obj: Record<string, any> = {}
+  let currentNode = root
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
+    let token = tokens[tokenIndex]
 
-  for (let token of tokens) {
     if (token.type === "STAG") {
-      let newNode = {
-        key: token.value,
-        parent: currentParent,
-        children: [] as Node[]
-      } as Node
-      currentParent?.children.push(newNode)
-      currentParent = newNode
-    } else if (token.type === "ETAG") {
-      currentParent = currentParent?.parent || null
-    } else if (token.type === "EMPTY_ELEM_TAG") {
-      currentParent = currentParent?.parent || null
+      if (currentNode === root && !root.key) root.key = token.value
+      else {
+        let newNode = {
+          parent: currentNode,
+          children: [] as Node[],
+          key: token.value,
+          attributes: {},
+        } as Node
+        currentNode.children.push(newNode)
+        currentNode = newNode
+        depth++
+      }
+    } else if (token.type === "ETAG" || token.type == "EMPTY_ELEM_TAG") {
+      if (currentNode.parent) currentNode = currentNode.parent
+      depth--
     } else if (token.type === "TEXT") {
-      if (currentParent) currentParent.value = token.value
+      currentNode.value = replaceHTMLEntities(token.value)
+    } else if (token.type === "ATTR_NAME") {
+      let nextToken = tokens[++tokenIndex]
+      if (nextToken.type !== "ATTR_VALUE")
+        throw new SyntaxError("Expected attribute value after attribute name.")
+      currentNode.attributes[token.value] = replaceHTMLEntities(nextToken.value)
+    } else if (token.type === "CDATA") {
+      currentNode.value = token.value
     }
   }
 
-  // recursively create the object while transversing through the nodes
-  obj = _constructObject(root)
-  console.log(JSON.stringify(obj))
+  // if the currentNode doesn't match the root, the tags are not balanced
+  if (depth !== 0 || currentNode !== root)
+    throw new SyntaxError("Unexpected EOF")
 
-  return obj
-}*/
+  return { [root.key]: _constructObject(root) }
+}
 
 const xml: DataFormat = {
   loadFile: async function (path: PathLike | fs.FileHandle): Promise<StructuredData> {
-    throw new Error("Function not implemented.")
+    const text = (await fs.readFile(path)).toString()
+    return xml.from(text)
   },
 
   from: function (text: string): StructuredData {
-    console.log(parse(text))
-    return new StructuredData({}, "xml")
+    const parsed = parse(text)
+    return new StructuredData(parsed, "xml")
   },
 }
 
