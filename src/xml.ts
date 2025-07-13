@@ -278,7 +278,7 @@ const _constructObject = (root: Node): any => {
             if (Array.isArray(constructed)) {
               constructed.push(...Object.entries(child.attributes).map(([k, v]) => ({ [k]: v })))
               children.push({ [child.key]: constructed })
-            } else children.push({ [child.key]: { ...child.attributes, ...constructed }})
+            } else children.push({ [child.key]: { ...child.attributes, ...constructed } })
             break
         }
       }

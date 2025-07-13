@@ -50,3 +50,19 @@ export const replaceHTMLEntities = (str: string) => {
     }
   })
 }
+
+// credits: https://stackoverflow.com/a/55835813
+export const compareArrays = (arr1: any[], arr2: any[]): boolean => {
+  if (arr1.length !== arr2.length) return false
+
+  // implement custom sort if necessary
+  arr1.sort()
+  arr2.sort()
+
+  // use normal for loop so we can return immediately if not equal
+  for (let i = 0; i < arr1.length; i++) {
+    if (arr1[i] !== arr2[i]) return false
+  }
+
+  return true
+}
