@@ -267,7 +267,21 @@ const _constructObject = (root: Node): any => {
   } else {
     let children = [] as any[]
     for (let child of root.children) {
-      children.push({ [child.key]: _constructObject(child) })
+      let constructed = _constructObject(child)
+      if (Object.keys(child.attributes).length === 0) children.push({ [child.key]: constructed })
+      else {
+        switch (typeof constructed) {
+          case "string":
+            children.push({ [child.key]: { ...child.attributes, value: constructed } })
+            break
+          case "object":
+            if (Array.isArray(constructed)) {
+              constructed.push(...Object.entries(child.attributes).map(([k, v]) => ({ [k]: v })))
+              children.push({ [child.key]: constructed })
+            } else children.push({ [child.key]: { ...child.attributes, ...constructed }})
+            break
+        }
+      }
     }
     return children
   }
