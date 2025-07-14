@@ -252,7 +252,7 @@ const tokenize = (str: string): Token[] => {
   return tokens
 }
 
-const _constructObject = (root: Node): any => {
+const _constructObject = (root: Node): string | Record<string, any> => {
   // recursively construct sub nodes
   // base case for the recursive function
   if (root.children.length === 0) {
@@ -261,7 +261,7 @@ const _constructObject = (root: Node): any => {
     else {
       return {
         ...root.attributes,
-        value: root.value,
+        $value: root.value,
       }
     }
   } else {
@@ -272,7 +272,7 @@ const _constructObject = (root: Node): any => {
       else {
         switch (typeof constructed) {
           case "string":
-            children.push({ [child.key]: { ...child.attributes, value: constructed } })
+            children.push({ [child.key]: { ...child.attributes, $value: constructed } })
             break
           case "object":
             if (Array.isArray(constructed)) {
