@@ -1,5 +1,10 @@
 import { compareArrays } from "./utils/common.js"
 
+type XMLValue = string | XMLObject | XMLValue[]
+interface XMLObject {
+  [key: string]: string | XMLValue
+}
+
 export default class StructuredData {
   private _data: object
   originFormat: "csv" | "json" | "xml" | "yaml"
@@ -10,17 +15,18 @@ export default class StructuredData {
   }
 
   private static _getXmlData = (
-    element: Record<string, any>,
+    element: XMLValue,
     isCollection: boolean = false,
     collectionName: string | null = null,
     parentKey: string | null = null,
-  ): Record<string, any> => {
+  ): XMLValue => {
     // recursively go through each element
 
     if (typeof element === "string") return element
     else if (typeof element === "object") {
       if (Array.isArray(element)) {
         if (element.length === 0) return this._getXmlData(element)
+        if (element.length === 1) return this._getXmlData(element[0])
         // check if all element have a common shape, so that we can group them together
         let shapes = element.map((sub) => Object.keys(sub))
         let sampleShape = shapes[0]
@@ -33,9 +39,9 @@ export default class StructuredData {
             return parentKey === name + "s" ? data : { [name + "s"]: data }
           }
         } else {
-          let obj = {} as Record<string, any>
+          let obj = {} as XMLObject
           for (let sub of element) {
-            const [k, v] = Object.entries(sub as Record<string, any>)[0] || []
+            const [k, v] = Object.entries(sub as XMLValue)[0] || []
             obj[k] = this._getXmlData(v, false, null, k)
           }
           return obj
@@ -44,7 +50,7 @@ export default class StructuredData {
         if (isCollection && collectionName) {
           return StructuredData._getXmlData(element[collectionName])
         } else {
-          let obj = {} as Record<string, any>
+          let obj = {} as XMLObject
           for (let [k, v] of Object.entries(element)) {
             obj[k] = this._getXmlData(v, false, null, k)
           }
@@ -67,7 +73,7 @@ export default class StructuredData {
         throw new TypeError("Format not supported")
       case "xml":
         const rootKey = Object.keys(this._data)[0]
-        const root = (this._data as Record<string, any>)[rootKey]
+        const root = (this._data as XMLObject)[rootKey]
         return { [rootKey]: StructuredData._getXmlData(root) }
       case "yaml":
         throw new TypeError("Format not supported")

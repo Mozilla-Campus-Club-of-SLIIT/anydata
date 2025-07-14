@@ -30,6 +30,11 @@ interface Node {
   attributes: Record<string, string>
 }
 
+type XMLValue = string | XMLObject | XMLValue[]
+interface XMLObject {
+  [key: string]: string | XMLValue
+}
+
 const _consumeUntil = (
   str: string,
   chars: string[],
@@ -252,7 +257,7 @@ const tokenize = (str: string): Token[] => {
   return tokens
 }
 
-const _constructObject = (root: Node): string | Record<string, any> => {
+const _constructObject = (root: Node): XMLValue => {
   // recursively construct sub nodes
   // base case for the recursive function
   if (root.children.length === 0) {
@@ -265,7 +270,7 @@ const _constructObject = (root: Node): string | Record<string, any> => {
       }
     }
   } else {
-    let children = [] as any[]
+    let children = [] as XMLValue[]
     for (let child of root.children) {
       let constructed = _constructObject(child)
       if (Object.keys(child.attributes).length === 0) children.push({ [child.key]: constructed })
@@ -287,7 +292,7 @@ const _constructObject = (root: Node): string | Record<string, any> => {
   }
 }
 
-const parse = (str: string): Record<string, any> => {
+const parse = (str: string): XMLValue => {
   const tokens = tokenize(str)
   const root = {
     parent: null,
@@ -343,7 +348,7 @@ const xml: DataFormat = {
 
   from: function (text: string): StructuredData {
     const parsed = parse(text)
-    return new StructuredData(parsed, "xml")
+    return new StructuredData(parsed as XMLObject, "xml")
   },
 }
 
