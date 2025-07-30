@@ -107,7 +107,72 @@ export default class StructuredData {
   }
 
   toYaml(): string {
-    throw new Error("Function not implemented.")
+    if (this.originFormat !== "yaml") {
+      throw new Error("Cannot convert to YAML: data was not originally in YAML format")
+    }
+    return this.serializeToYaml(this._data as YAMLObject)
+  }
+
+  private serializeToYaml(data: YAMLValue, indent: number = 0): string {
+    const indentStr = "  ".repeat(indent)
+
+    if (data === null) {
+      return "null"
+    }
+
+    if (typeof data === "string") {
+      // Quote strings that contain special characters or look like other types
+      if (data.includes(":") || data.includes("#") || data.includes("-") ||
+        /^(true|false|null|yes|no|on|off|~)$/i.test(data) ||
+        /^-?\d+(\.\d+)?$/.test(data) ||
+        data.trim() !== data) {
+        return `"${data}"`
+      }
+      return data
+    }
+
+    if (typeof data === "number" || typeof data === "boolean") {
+      return String(data)
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) {
+        return "[]"
+      }
+      return data.map(item => {
+        const serialized = this.serializeToYaml(item, indent + 1)
+        if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+          const lines = serialized.split("\n")
+          return `${indentStr}- ${lines[0]}\n${lines.slice(1).map(line => `  ${indentStr}${line}`).join("\n")}`
+        }
+        return `${indentStr}- ${serialized}`
+      }).join("\n")
+    }
+
+    if (typeof data === "object") {
+      const entries = Object.entries(data)
+      if (entries.length === 0) {
+        return "{}"
+      }
+
+      return entries.map(([key, value]) => {
+        const serializedValue = this.serializeToYaml(value, indent + 1)
+
+        if (typeof value === "object" && value !== null) {
+          if (Array.isArray(value) && value.length > 0) {
+            return `${indentStr}${key}:\n${serializedValue}`
+          } else if (!Array.isArray(value) && Object.keys(value).length > 0) {
+            return `${indentStr}${key}:\n${serializedValue}`
+          } else {
+            return `${indentStr}${key}: ${serializedValue}`
+          }
+        } else {
+          return `${indentStr}${key}: ${serializedValue}`
+        }
+      }).join("\n")
+    }
+
+    return String(data)
   }
 
   async exportCsv(): Promise<void> {
