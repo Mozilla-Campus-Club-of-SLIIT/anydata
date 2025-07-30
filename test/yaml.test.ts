@@ -65,7 +65,7 @@ describe("yaml", () => {
       assert.ok(data instanceof StructuredData)
       assert.strictEqual(data.originFormat, "yaml")
 
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
       assert.strictEqual(yamlData.name, "John Doe")
       assert.strictEqual(yamlData.age, 30)
       assert.strictEqual(yamlData.active, true)
@@ -105,7 +105,7 @@ describe("yaml", () => {
       assert.ok(data instanceof StructuredData)
       assert.strictEqual(data.originFormat, "yaml")
 
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
       assert.strictEqual(yamlData.name, "John Doe")
       assert.strictEqual(yamlData.age, 30)
       assert.strictEqual(yamlData.active, true)
@@ -116,7 +116,7 @@ describe("yaml", () => {
 
       assert.ok(data instanceof StructuredData)
 
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
       assert.strictEqual(yamlData.version, "1.0")
       assert.deepStrictEqual(yamlData.database, {
         host: "localhost",
@@ -146,7 +146,7 @@ false_values:
   - off`
 
       const data = yaml.from(booleanYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.deepStrictEqual(yamlData.true_values, [true, true, true])
       assert.deepStrictEqual(yamlData.false_values, [false, false, false])
@@ -160,7 +160,7 @@ empty_null:
 explicit_null: null`
 
       const data = yaml.from(nullYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.strictEqual(yamlData.null_value, null)
       assert.strictEqual(yamlData.tilde_null, null)
@@ -176,7 +176,7 @@ float: 3.14159
 negative_float: -2.71828`
 
       const data = yaml.from(numberYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.strictEqual(yamlData.integer, 42)
       assert.strictEqual(yamlData.negative, -17)
@@ -191,7 +191,7 @@ single_quoted: 'Hello World'
 unquoted: Hello World`
 
       const data = yaml.from(quotedYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.strictEqual(yamlData.double_quoted, "Hello World")
       assert.strictEqual(yamlData.single_quoted, "Hello World")
@@ -216,13 +216,14 @@ users:
       active: false`
 
       const data = yaml.from(nestedYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.ok(Array.isArray(yamlData.users))
-      assert.strictEqual(yamlData.users.length, 2)
-      assert.strictEqual(yamlData.users[0].name, "Alice")
-      assert.deepStrictEqual(yamlData.users[0].roles, ["admin", "user"])
-      assert.strictEqual(yamlData.users[0].profile.email, "alice@example.com")
+      const users = yamlData.users as Array<Record<string, unknown>>
+      assert.strictEqual(users.length, 2)
+      assert.strictEqual(users[0].name, "Alice")
+      assert.deepStrictEqual(users[0].roles, ["admin", "user"])
+      assert.strictEqual((users[0].profile as Record<string, unknown>).email, "alice@example.com")
     })
 
     it("should throw an error for empty yaml", () => {
@@ -246,7 +247,7 @@ age: 30
 city: New York`
 
       const data = yaml.from(commentYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.strictEqual(yamlData.name, "John")
       assert.strictEqual(yamlData.age, 30)
@@ -260,7 +261,7 @@ age: 30
 ...`
 
       const data = yaml.from(docYaml)
-      const yamlData = data.data as Record<string, any>
+      const yamlData = data.data as Record<string, unknown>
 
       assert.strictEqual(yamlData.name, "John")
       assert.strictEqual(yamlData.age, 30)
