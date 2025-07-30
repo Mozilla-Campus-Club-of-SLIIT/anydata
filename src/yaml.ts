@@ -137,3 +137,38 @@ const tokenizeYAML = (text: string): YAMLToken[] => {
   return tokens
 }
 
+const parseYAMLValue = (value: string): YAMLValue => {
+  const trimmed = value.trim()
+
+  // Handle quoted strings
+  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1)
+  }
+
+  // Handle null values
+  if (trimmed === "null" || trimmed === "~" || trimmed === "") {
+    return null
+  }
+
+  // Handle boolean values 
+  if (trimmed === "true" || trimmed === "yes" || trimmed === "on") {
+    return true
+  }
+  if (trimmed === "false" || trimmed === "no" || trimmed === "off") {
+    return false
+  }
+
+  // Handle numbers
+  if (/^-?\d+$/.test(trimmed)) {
+    return parseInt(trimmed, 10)
+  }
+
+  if (/^-?\d+\.\d+$/.test(trimmed)) {
+    return parseFloat(trimmed)
+  }
+
+  return trimmed
+
+}
+
