@@ -1,3 +1,8 @@
+import { promises as fs, PathLike } from "fs"
+import DataFormat from "./types/DataFormat.js"
+import StructuredData from "./StructuredData.js"
+
+// YAML value types
 type YAMLValue = string | number | boolean | null | YAMLObject | YAMLValue[]
 
 interface YAMLObject {
@@ -7,7 +12,7 @@ interface YAMLObject {
 interface YAMLMetadata {
   originalIndentation?: string
   originalQuoting?: "single" | "double" | "none"
-  originalMultilines?: "literal" | "folded" | "none"
+  originalMultiline?: "literal" | "folded" | "none"
   comments?: string[]
 }
 
@@ -25,16 +30,9 @@ interface YAMLDocument {
   }
 }
 
+// Tokenizer for YAML
 interface YAMLToken {
-  type:
-  "KEY"
-  | "VALUE"
-  | "LIST_ITEM"
-  | "COMMENT"
-  | "DOCUMENT_START"
-  | "DOCUMENT_END"
-  | "INDENT"
-  | "NEW_LINE"
+  type: "KEY" | "VALUE" | "LIST_ITEM" | "COMMENT" | "DOCUMENT_START" | "DOCUMENT_END" | "INDENT" | "NEWLINE"
   value: string
   line: number
   column: number
@@ -52,12 +50,13 @@ const tokenizeYAML = (text: string): YAMLToken[] => {
 
     if (trimmed === "") {
       tokens.push({
-        type: "NEW_LINE",
+        type: "NEWLINE",
         value: "",
         line: lineIndex + 1,
         column: 0,
         indent: 0
       })
+      continue
     }
 
     if (trimmed === "---") {
@@ -71,6 +70,16 @@ const tokenizeYAML = (text: string): YAMLToken[] => {
       continue
     }
 
+    if (trimmed === "...") {
+      tokens.push({
+        type: "DOCUMENT_END",
+        value: "...",
+        line: lineIndex + 1,
+        column: indent,
+        indent
+      })
+      continue
+    }
 
     if (trimmed.startsWith("#")) {
       tokens.push({
@@ -80,19 +89,10 @@ const tokenizeYAML = (text: string): YAMLToken[] => {
         column: indent,
         indent
       })
+      continue
     }
 
-    if (trimmed === "...") {
-      tokens.push({
-        type: "DOCUMENT_END",
-        value: "...",
-        line: lineIndex + 1,
-        column: indent,
-        indent
-      })
-    }
-
-    if (trimmed.startsWith("-")) {
+    if (trimmed.startsWith("- ")) {
       tokens.push({
         type: "LIST_ITEM",
         value: trimmed.substring(2),
@@ -100,6 +100,7 @@ const tokenizeYAML = (text: string): YAMLToken[] => {
         column: indent,
         indent
       })
+      continue
     }
 
     if (trimmed.includes(":")) {
@@ -134,6 +135,7 @@ const tokenizeYAML = (text: string): YAMLToken[] => {
       })
     }
   }
+
   return tokens
 }
 
@@ -151,7 +153,7 @@ const parseYAMLValue = (value: string): YAMLValue => {
     return null
   }
 
-  // Handle boolean values 
+  // Handle boolean values
   if (trimmed === "true" || trimmed === "yes" || trimmed === "on") {
     return true
   }
@@ -163,15 +165,13 @@ const parseYAMLValue = (value: string): YAMLValue => {
   if (/^-?\d+$/.test(trimmed)) {
     return parseInt(trimmed, 10)
   }
-
   if (/^-?\d+\.\d+$/.test(trimmed)) {
     return parseFloat(trimmed)
   }
 
+  // Return as string
   return trimmed
-
 }
-
 
 const parseYAML = (text: string): YAMLDocument => {
   const tokens = tokenizeYAML(text)
@@ -182,11 +182,12 @@ const parseYAML = (text: string): YAMLDocument => {
   while (i < tokens.length) {
     const token = tokens[i]
 
-    if (token.type === "COMMENT" || token.type === "NEW_LINE" ||
+    if (token.type === "COMMENT" || token.type === "NEWLINE" ||
       token.type === "DOCUMENT_START" || token.type === "DOCUMENT_END") {
       i++
       continue
     }
+
     // Handle indentation changes
     while (stack.length > 1 && stack[stack.length - 1].indent >= token.indent) {
       stack.pop()
@@ -245,3 +246,31 @@ const parseYAML = (text: string): YAMLDocument => {
     metadata: {}
   }
 }
+
+const yaml: DataFormat = {
+  loadFile: async function (path: PathLike | fs.FileHandle): Promise<StructuredData> {
+    const text = (await fs.readFile(path)).toString()
+    return yaml.from(text)
+  },
+
+  from: function (text: string): StructuredData {
+    if (!text.trim()) {
+      throw new SyntaxError("Empty YAML document")
+    }
+
+    try {
+      const parsed = parseYAML(text)
+      return new StructuredData(parsed, "yaml")
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw error
+      }
+      const message = typeof error === "object" && error !== null && "message" in error
+        ? (error as { message: string }).message
+        : String(error)
+      throw new SyntaxError(`Invalid YAML: ${message}`)
+    }
+  },
+}
+
+export default yaml

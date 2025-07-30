@@ -5,6 +5,20 @@ interface XMLObject {
   [key: string]: string | XMLValue
 }
 
+type YAMLValue = string | number | boolean | null | YAMLObject | YAMLValue[]
+interface YAMLObject {
+  [key: string]: YAMLValue
+}
+
+interface YAMLDocument {
+  content: YAMLObject
+  metadata: {
+    documentSeparators?: boolean
+    version?: string
+    tags?: Record<string, string>
+  }
+}
+
 export default class StructuredData {
   private _data: object
   originFormat: "csv" | "json" | "xml" | "yaml"
@@ -62,6 +76,12 @@ export default class StructuredData {
     return element
   }
 
+  private static _getYamlData = (data: YAMLDocument): YAMLObject => {
+    // Return the content without metadata for user-friendly access
+    // This makes it JSON-friendly while preserving the original structure
+    return data.content
+  }
+
   get data(): object {
     // data getter attempts to return data in a more javascript friendly way
     // the returned data will be suitable to be converted in json if required
@@ -76,7 +96,7 @@ export default class StructuredData {
         const root = (this._data as XMLObject)[rootKey]
         return { [rootKey]: StructuredData._getXmlData(root) }
       case "yaml":
-        throw new TypeError("Format not supported")
+        return StructuredData._getYamlData(this._data as YAMLDocument)
       case "json":
         return this._data
       default:
