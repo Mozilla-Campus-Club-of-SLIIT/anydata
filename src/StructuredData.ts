@@ -1,87 +1,22 @@
 import { compareArrays } from "./utils/common.js"
+import type { YAMLValue, YAMLObject } from "./types/yaml.js"
 
-/**
- * Represents any valid XML value type including strings, objects, and arrays
- */
+
 type XMLValue = string | XMLObject | XMLValue[]
 
-/**
- * Represents an XML object with string keys and XML values
- */
+
 interface XMLObject {
   [key: string]: string | XMLValue
 }
 
-/**
- * Represents any valid YAML value type including primitives, objects, and arrays
- * Supports all YAML scalar types: strings, numbers, booleans, null
- */
-type YAMLValue = string | number | boolean | null | YAMLObject | YAMLValue[]
 
-/**
- * Represents a YAML object with string keys and YAML values
- * Used for mapping YAML key-value pairs in parsed data structures
- */
-interface YAMLObject {
-  [key: string]: YAMLValue
-}
-
-/**
- * Main class for handling structured data from various formats (CSV, JSON, XML, YAML)
- * 
- * This class provides a unified interface for working with data from different formats,
- * allowing conversion between formats while preserving the original structure and metadata.
- * 
- * Key features:
- * - Format-agnostic data storage and retrieval
- * - Round-trip conversion support (format → StructuredData → format)
- * - Clean data getter for JavaScript-friendly access
- * - Metadata preservation for accurate format conversion
- * 
- * @example
- * ```typescript
- * // Create from YAML
- * const yamlData = yaml.from(`
- *   name: John
- *   age: 30
- *   hobbies: [reading, coding]
- * `);
- * 
- * console.log(yamlData.originFormat); // 'yaml'
- * console.log(yamlData.data); // Clean JavaScript object
- * 
- * // Convert back to YAML
- * const yamlString = yamlData.toYaml();
- * ```
- */
 export default class StructuredData {
-  /**
-   * Private storage for the original parsed data with metadata preserved
-   * Contains the raw data structure as parsed from the original format
-   * @private
-   */
+
   private _data: object
 
-  /**
-   * The original format of the data source
-   * Used to determine appropriate conversion methods and validation
-   * @public
-   */
+
   originFormat: "csv" | "json" | "xml" | "yaml"
 
-  /**
-   * Creates a new StructuredData instance
-   * 
-   * @param data - The parsed data object from any supported format
-   * @param originFormat - The original format of the data ("csv" | "json" | "xml" | "yaml")
-   * 
-   * @example
-   * ```typescript
-   * // Typically called by format-specific loaders
-   * const yamlData = new StructuredData(parsedYamlObject, "yaml");
-   * const jsonData = new StructuredData(parsedJsonObject, "json");
-   * ```
-   */
   constructor(data: object, originFormat: "csv" | "json" | "xml" | "yaml") {
     this._data = data
     this.originFormat = originFormat
@@ -167,57 +102,7 @@ export default class StructuredData {
     return data
   }
 
-  /**
-   * Gets the clean, JavaScript-friendly version of the stored data
-   * 
-   * This getter provides access to the data in a format optimized for JavaScript consumption.
-   * The returned data is suitable for JSON serialization and general JavaScript operations.
-   * For format-specific operations (like converting back to the original format), the internal
-   * _data property preserves the necessary metadata and structure.
-   * 
-   * Format-specific behavior:
-   * - **YAML**: Returns data directly (already JavaScript-friendly)
-   * - **JSON**: Returns data directly (native JavaScript format)
-   * - **XML**: Transforms XML structure to more natural JavaScript objects
-   * - **CSV**: Not yet supported
-   * 
-   * @returns A clean JavaScript object representation of the data
-   * @throws {TypeError} When called on unsupported formats (currently CSV)
-   * 
-   * @example
-   * ```typescript
-   * // YAML data example
-   * const yamlData = yaml.from(`
-   *   user:
-   *     name: John Doe
-   *     age: 30
-   *     hobbies:
-   *       - reading
-   *       - coding
-   * `);
-   * 
-   * const cleanData = yamlData.data;
-   * console.log(cleanData);
-   * // Output: {
-   * //   user: {
-   * //     name: "John Doe",
-   * //     age: 30,
-   * //     hobbies: ["reading", "coding"]
-   * //   }
-   * // }
-   * 
-   * // Data is JSON-serializable
-   * const jsonString = JSON.stringify(cleanData);
-   * ```
-   * 
-   * @example
-   * ```typescript
-   * // Working with the clean data
-   * const data = yamlData.data as { user: { name: string; age: number; hobbies: string[] } };
-   * console.log(data.user.name); // "John Doe"
-   * console.log(data.user.hobbies[0]); // "reading"
-   * ```
-   */
+
   get data(): object {
     // data getter attempts to return data in a more javascript friendly way
     // the returned data will be suitable to be converted in json if required
