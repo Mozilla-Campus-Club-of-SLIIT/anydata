@@ -10,15 +10,6 @@ interface YAMLObject {
   [key: string]: YAMLValue
 }
 
-interface YAMLDocument {
-  content: YAMLObject
-  metadata: {
-    documentSeparators?: boolean
-    version?: string
-    tags?: Record<string, string>
-  }
-}
-
 export default class StructuredData {
   private _data: object
   originFormat: "csv" | "json" | "xml" | "yaml"
@@ -76,10 +67,9 @@ export default class StructuredData {
     return element
   }
 
-  private static _getYamlData = (data: YAMLDocument): YAMLObject => {
-    // Return the content without metadata for user-friendly access
-    // This makes it JSON-friendly while preserving the original structure
-    return data.content
+  private static _getYamlData = (data: YAMLObject): YAMLObject => {
+    // Return the data directly since we're now passing parsed YAML objects
+    return data
   }
 
   get data(): object {
@@ -96,7 +86,7 @@ export default class StructuredData {
         const root = (this._data as XMLObject)[rootKey]
         return { [rootKey]: StructuredData._getXmlData(root) }
       case "yaml":
-        return StructuredData._getYamlData(this._data as YAMLDocument)
+        return StructuredData._getYamlData(this._data as YAMLObject)
       case "json":
         return this._data
       default:
