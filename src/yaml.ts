@@ -55,18 +55,18 @@
 import { promises as fs, PathLike } from "fs"
 import DataFormat from "./types/DataFormat.js"
 import StructuredData from "./StructuredData.js"
-
-/**
- * Represents any valid YAML value type including primitives, objects, and arrays
- */
-type YAMLValue = string | number | boolean | null | YAMLObject | YAMLValue[]
-
-/**
- * Represents a YAML object with string keys and YAML values
- */
-interface YAMLObject {
-  [key: string]: YAMLValue
-}
+import {
+  YAMLValue,
+  YAMLObject,
+  YAMLParserStackItem,
+  YAML_CONSTANTS
+} from "./types/yaml.js"
+import {
+  shouldSkipLine,
+  getIndentLevel,
+  removeInlineComments,
+  parseScalarValue
+} from "./utils/yaml.js"
 
 /**
  * Parses a single YAML value string into its corresponding JavaScript type
@@ -83,37 +83,185 @@ interface YAMLObject {
  * ```
  */
 const parseYAMLValue = (value: string): YAMLValue => {
-  const trimmed = value.trim()
+  return parseScalarValue(value.trim())
+}
 
-  // Handle quoted strings
-  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-    return trimmed.slice(1, -1)
+/**
+ * Checks if the current indentation is invalid based on the parser state
+ * 
+ * @param indent - Current line indentation
+ * @param lastCompletedKeyIndent - Last completed key-value pair indentation
+ * @param stack - Parser stack
+ * @returns True if indentation is invalid
+ */
+function isInvalidIndentation(
+  indent: number,
+  lastCompletedKeyIndent: number,
+  stack: YAMLParserStackItem[]
+): boolean {
+  if (indent <= 0) return false
+
+  // If this line is indented but the last completed key-value pair was at the same or higher indent,
+  // and no parent expects nested content at this level, it's invalid
+  if (lastCompletedKeyIndent >= 0 && indent > lastCompletedKeyIndent) {
+    // Look for a valid parent that expects nested content
+    let foundValidParent = false
+    for (let j = stack.length - 1; j >= 0; j--) {
+      // Special case: if this is the root entry and we have a completed key-value pair
+      // at indent 0 or higher, the root should not accept nested content
+      if (stack[j].indent === YAML_CONSTANTS.ROOT_INDENT && lastCompletedKeyIndent >= 0) {
+        continue
+      }
+
+      if (stack[j].indent < indent && stack[j].expectsNested === true) {
+        foundValidParent = true
+        break
+      }
+    }
+
+    return !foundValidParent
   }
 
-  // Handle null values
-  if (trimmed === "null" || trimmed === "~" || trimmed === "") {
-    return null
+  return false
+}
+
+/**
+ * Handles parsing of list items
+ * 
+ * @param current - Current parser context
+ * @param itemContent - Content of the list item
+ * @param stack - Parser stack
+ * @param indent - Current indentation level
+ * @param lineNumber - Current line number (for error reporting)
+ */
+function handleListItem(
+  current: YAMLParserStackItem,
+  itemContent: string,
+  stack: YAMLParserStackItem[],
+  indent: number,
+  lineNumber: number
+): void {
+  // Ensure we're in an array context
+  if (!Array.isArray(current.obj)) {
+    throw new SyntaxError(`Unexpected list item at line ${lineNumber + 1}`)
   }
 
-  // Handle boolean values
-  if (trimmed === "true" || trimmed === "yes" || trimmed === "on") {
-    return true
+  // Check if the item contains a key-value pair
+  if (itemContent.includes(":")) {
+    const colonIndex = itemContent.indexOf(":")
+    const key = itemContent.substring(0, colonIndex).trim()
+    const value = itemContent.substring(colonIndex + 1).trim()
+
+    // Create a new object for this list item
+    const obj: YAMLObject = {}
+    current.obj.push(obj)
+
+    if (value) {
+      // Simple key-value in list item
+      obj[key] = parseYAMLValue(value)
+    } else {
+      // Key with potential nested content in list item
+      obj[key] = null // Default to null, will be overwritten if nested content found
+    }
+
+    // Push this object to the stack for potential nested content
+    stack.push({ obj, indent, key, expectsNested: !value })
+  } else {
+    // Simple list item
+    current.obj.push(parseYAMLValue(itemContent))
   }
-  if (trimmed === "false" || trimmed === "no" || trimmed === "off") {
-    return false
+}
+
+/**
+ * Handles parsing of key-value pairs
+ * 
+ * @param current - Current parser context
+ * @param trimmed - Trimmed line content
+ * @param stack - Parser stack
+ * @param indent - Current indentation level
+ * @param lines - All lines being parsed
+ * @param lineIndex - Current line index
+ * @returns Updated lastCompletedKeyIndent value
+ */
+function handleKeyValuePair(
+  current: YAMLParserStackItem,
+  trimmed: string,
+  stack: YAMLParserStackItem[],
+  indent: number,
+  lines: string[],
+  lineIndex: number
+): number {
+  const colonIndex = trimmed.indexOf(":")
+  const key = trimmed.substring(0, colonIndex).trim()
+  const value = trimmed.substring(colonIndex + 1).trim()
+
+  if (Array.isArray(current.obj)) {
+    throw new SyntaxError(`Unexpected key-value pair in array context at line ${lineIndex + 1}`)
   }
 
-  // Handle numbers
-  if (/^-?\d+$/.test(trimmed)) {
-    return parseInt(trimmed, 10)
+  if (value) {
+    // Simple key-value pair - this completes immediately and doesn't expect nested content
+    current.obj[key] = parseYAMLValue(value)
+    return indent
+  } else {
+    // Key with nested content - look ahead to determine if it's an array or object
+    const lookaheadResult = lookAheadForNestedContent(lines, lineIndex, indent)
+
+    if (lookaheadResult.found) {
+      if (lookaheadResult.isArray) {
+        // Next content is a list
+        const array: YAMLValue[] = []
+        current.obj[key] = array
+        stack.push({ obj: array, indent, key, expectsNested: true })
+      } else {
+        // Next content is an object
+        const obj: YAMLObject = {}
+        current.obj[key] = obj
+        stack.push({ obj, indent, key, expectsNested: true })
+      }
+      return YAML_CONSTANTS.ROOT_INDENT // Reset since this key expects nested content
+    } else {
+      // No nested content, set as null
+      current.obj[key] = null
+      return indent
+    }
   }
-  if (/^-?\d+\.\d+$/.test(trimmed)) {
-    return parseFloat(trimmed)
+}
+
+/**
+ * Looks ahead in the lines to determine if there's nested content
+ * 
+ * @param lines - All lines being parsed
+ * @param currentIndex - Current line index
+ * @param currentIndent - Current indentation level
+ * @returns Object with found flag and isArray flag
+ */
+function lookAheadForNestedContent(
+  lines: string[],
+  currentIndex: number,
+  currentIndent: number
+): { found: boolean; isArray: boolean } {
+  let nextLineIndex = currentIndex + 1
+
+  // Look for the next non-empty, non-comment line
+  while (nextLineIndex < lines.length) {
+    const nextLine = lines[nextLineIndex].trim()
+    if (nextLine && !nextLine.startsWith(YAML_CONSTANTS.COMMENT_PREFIX)) {
+      const nextIndent = getIndentLevel(lines[nextLineIndex])
+      if (nextIndent > currentIndent) {
+        return {
+          found: true,
+          isArray: nextLine.startsWith(YAML_CONSTANTS.LIST_PREFIX)
+        }
+      } else {
+        // Same or lower indent, no nested content
+        break
+      }
+    }
+    nextLineIndex++
   }
 
-  // Return as string
-  return trimmed
+  return { found: false, isArray: false }
 }
 
 /**
@@ -139,52 +287,29 @@ const parseYAMLValue = (value: string): YAMLValue => {
 const parseYAML = (text: string): YAMLObject => {
   const lines = text.split("\n")
   const result: YAMLObject = {}
-  const stack: Array<{ obj: YAMLObject | YAMLValue[], indent: number, key?: string, expectsNested?: boolean }> = [{ obj: result, indent: -1, expectsNested: true }]
-  let lastCompletedKeyIndent = -1 // Track the indent level of the last completed key-value pair
+  const stack: YAMLParserStackItem[] = [{
+    obj: result,
+    indent: YAML_CONSTANTS.ROOT_INDENT,
+    expectsNested: true
+  }]
+  let lastCompletedKeyIndent: number = YAML_CONSTANTS.ROOT_INDENT
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    const indent = line.length - line.trimStart().length
+    const indent = getIndentLevel(line)
     let trimmed = line.trim()
 
     // Skip empty lines, comments, and document separators
-    if (!trimmed || trimmed.startsWith("#") || trimmed === "---" || trimmed === "...") {
+    if (shouldSkipLine(trimmed)) {
       continue
     }
 
     // Remove inline comments
-    const commentIndex = trimmed.indexOf(" #")
-    if (commentIndex !== -1) {
-      trimmed = trimmed.substring(0, commentIndex).trim()
-    }
+    trimmed = removeInlineComments(trimmed)
 
-    // Check for invalid indentation patterns
-    if (indent > 0) {
-      // If this line is indented but the last completed key-value pair was at the same or higher indent,
-      // and no parent expects nested content at this level, it's invalid
-      if (lastCompletedKeyIndent >= 0 && indent > lastCompletedKeyIndent) {
-        // Look for a valid parent that expects nested content
-        // The parent must have an indent level that is actually less than the current indent
-        // AND must expect nested content
-        // AND must not be the root if we have a completed key at the same or lower level
-        let foundValidParent = false
-        for (let j = stack.length - 1; j >= 0; j--) {
-          // Special case: if this is the root entry (-1) and we have a completed key-value pair
-          // at indent 0 or higher, the root should not accept nested content
-          if (stack[j].indent === -1 && lastCompletedKeyIndent >= 0) {
-            continue
-          }
-
-          if (stack[j].indent < indent && stack[j].expectsNested === true) {
-            foundValidParent = true
-            break
-          }
-        }
-
-        if (!foundValidParent) {
-          throw new SyntaxError(`Invalid indentation at line ${i + 1}`)
-        }
-      }
+    // Validate indentation
+    if (isInvalidIndentation(indent, lastCompletedKeyIndent, stack)) {
+      throw new SyntaxError(`Invalid indentation at line ${i + 1}`)
     }
 
     // Handle indentation changes - pop stack if we're at a lower or equal indent level
@@ -195,97 +320,23 @@ const parseYAML = (text: string): YAMLObject => {
     const current = stack[stack.length - 1]
 
     // Handle list items
-    if (trimmed.startsWith("- ")) {
-      const itemContent = trimmed.substring(2).trim()
+    if (trimmed.startsWith(YAML_CONSTANTS.LIST_PREFIX)) {
+      const itemContent = trimmed.substring(YAML_CONSTANTS.LIST_PREFIX.length).trim()
 
-      // Ensure we're in an array context
-      if (!Array.isArray(current.obj)) {
-        throw new SyntaxError(`Unexpected list item at line ${i + 1}`)
-      }
-
-      // Check if the item contains a key-value pair
-      if (itemContent.includes(":")) {
-        const colonIndex = itemContent.indexOf(":")
-        const key = itemContent.substring(0, colonIndex).trim()
-        const value = itemContent.substring(colonIndex + 1).trim()
-
-        // Create a new object for this list item
-        const obj: YAMLObject = {}
-        current.obj.push(obj)
-
-        if (value) {
-          // Simple key-value in list item
-          obj[key] = parseYAMLValue(value)
-        } else {
-          // Key with potential nested content in list item
-          obj[key] = null // Default to null, will be overwritten if nested content found
-        }
-
-        // Push this object to the stack for potential nested content
-        stack.push({ obj, indent, key, expectsNested: !value })
-      } else {
-        // Simple list item
-        current.obj.push(parseYAMLValue(itemContent))
-      }
+      handleListItem(current, itemContent, stack, indent, i)
       continue
     }
 
     // Handle key-value pairs
     if (trimmed.includes(":")) {
-      const colonIndex = trimmed.indexOf(":")
-      const key = trimmed.substring(0, colonIndex).trim()
-      const value = trimmed.substring(colonIndex + 1).trim()
-
-      if (Array.isArray(current.obj)) {
-        throw new SyntaxError(`Unexpected key-value pair in array context at line ${i + 1}`)
-      }
-
-      if (value) {
-        // Simple key-value pair - this completes immediately and doesn't expect nested content
-        current.obj[key] = parseYAMLValue(value)
-        lastCompletedKeyIndent = indent
-      } else {
-        // Key with nested content - look ahead to determine if it's an array or object
-        let nextLineIndex = i + 1
-        let foundNextContent = false
-        let isArray = false
-
-        // Look for the next non-empty, non-comment line
-        while (nextLineIndex < lines.length) {
-          const nextLine = lines[nextLineIndex].trim()
-          if (nextLine && !nextLine.startsWith("#")) {
-            const nextIndent = lines[nextLineIndex].length - lines[nextLineIndex].trimStart().length
-            if (nextIndent > indent) {
-              foundNextContent = true
-              isArray = nextLine.startsWith("- ")
-              break
-            } else {
-              // Same or lower indent, no nested content
-              break
-            }
-          }
-          nextLineIndex++
-        }
-
-        if (foundNextContent) {
-          if (isArray) {
-            // Next content is a list
-            const array: YAMLValue[] = []
-            current.obj[key] = array
-            stack.push({ obj: array, indent, key, expectsNested: true })
-          } else {
-            // Next content is an object
-            const obj: YAMLObject = {}
-            current.obj[key] = obj
-            stack.push({ obj, indent, key, expectsNested: true })
-          }
-          lastCompletedKeyIndent = -1 // Reset since this key expects nested content
-        } else {
-          // No nested content, set as null
-          current.obj[key] = null
-          lastCompletedKeyIndent = indent
-        }
-      }
+      lastCompletedKeyIndent = handleKeyValuePair(
+        current,
+        trimmed,
+        stack,
+        indent,
+        lines,
+        i
+      )
     }
   }
 
