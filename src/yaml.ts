@@ -17,7 +17,7 @@ interface YAMLNode {
 }
 
 interface YAMLDocument {
-  content: YAMLDocument
+  content: YAMLObject
   metadata: {
     documentSeparators?: boolean
     version?: string
@@ -172,3 +172,76 @@ const parseYAMLValue = (value: string): YAMLValue => {
 
 }
 
+
+const parseYAML = (text: string): YAMLDocument => {
+  const tokens = tokenizeYAML(text)
+  const result: YAMLObject = {}
+  const stack: Array<{ obj: YAMLObject | YAMLValue[], key?: string, indent: number }> = [{ obj: result, indent: -1 }]
+
+  let i = 0
+  while (i < tokens.length) {
+    const token = tokens[i]
+
+    if (token.type === "COMMENT" || token.type === "NEW_LINE" ||
+      token.type === "DOCUMENT_START" || token.type === "DOCUMENT_END") {
+      i++
+      continue
+    }
+    // Handle indentation changes
+    while (stack.length > 1 && stack[stack.length - 1].indent >= token.indent) {
+      stack.pop()
+    }
+
+    const current = stack[stack.length - 1]
+
+    if (token.type === "KEY") {
+      const key = token.value
+      const nextToken = tokens[i + 1]
+
+      if (nextToken && nextToken.type === "VALUE") {
+        // Simple key-value pair
+        const value = parseYAMLValue(nextToken.value)
+        if (Array.isArray(current.obj)) {
+          current.obj.push({ [key]: value })
+        } else {
+          current.obj[key] = value
+        }
+        i += 2
+      } else {
+        // Key with nested content
+        const nestedObj: YAMLObject = {}
+        if (Array.isArray(current.obj)) {
+          current.obj.push({ [key]: nestedObj })
+        } else {
+          current.obj[key] = nestedObj
+        }
+        stack.push({ obj: nestedObj, key, indent: token.indent })
+        i++
+      }
+    } else if (token.type === "LIST_ITEM") {
+      let arrayKey = current.key
+      if (!arrayKey) {
+        // Create array at root level
+        arrayKey = "_items"
+      }
+
+      if (typeof current.obj === "object" && !Array.isArray(current.obj)) {
+        if (!current.obj[arrayKey] || !Array.isArray(current.obj[arrayKey])) {
+          current.obj[arrayKey] = []
+        }
+
+        const array = current.obj[arrayKey] as YAMLValue[]
+        const value = parseYAMLValue(token.value)
+        array.push(value)
+      }
+      i++
+    } else {
+      i++
+    }
+  }
+
+  return {
+    content: result,
+    metadata: {}
+  }
+}
