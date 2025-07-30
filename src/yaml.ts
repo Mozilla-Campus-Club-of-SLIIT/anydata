@@ -1,15 +1,87 @@
+/**
+ * @fileoverview YAML format support for the anydata library
+ * 
+ * This module provides comprehensive YAML parsing and serialization capabilities
+ * without external dependencies. It implements a custom YAML parser that supports
+ * all major YAML constructs and provides round-trip conversion capability.
+ * 
+ * Features:
+ * - Custom YAML parser (no external dependencies)
+ * - Support for all YAML data types (scalars, sequences, mappings)
+ * - Proper handling of YAML-specific features (comments, document separators)
+ * - Round-trip conversion (YAML → JavaScript → YAML)
+ * - Comprehensive error handling and validation
+ * - Integration with StructuredData class for format-agnostic operations
+ * 
+ * Supported YAML features:
+ * - Scalars: strings, numbers, booleans, null
+ * - Collections: sequences (arrays), mappings (objects)
+ * - Comments (inline and block)
+ * - Document separators (---, ...)
+ * - Quoted and unquoted strings
+ * - Multi-level nesting
+ * - Proper indentation handling
+ * 
+ * @example
+ * ```typescript
+ * import { yaml } from './yaml.js';
+ * 
+ * // Parse YAML string
+ * const data = yaml.from(`
+ *   application:
+ *     name: MyApp
+ *     version: 1.0.0
+ *     features:
+ *       - authentication
+ *       - logging
+ *       - monitoring
+ * `);
+ * 
+ * // Access parsed data
+ * console.log(data.data.application.name); // "MyApp"
+ * console.log(data.originFormat); // "yaml"
+ * 
+ * // Convert back to YAML
+ * const yamlString = data.toYaml();
+ * 
+ * // Load from file
+ * const fileData = await yaml.loadFile('config.yaml');
+ * ```
+ * 
+ * @author Mozilla Campus Club of SLIIT
+ * @since 1.0.0
+ */
+
 import { promises as fs, PathLike } from "fs"
 import DataFormat from "./types/DataFormat.js"
 import StructuredData from "./StructuredData.js"
 
-// YAML value types
+/**
+ * Represents any valid YAML value type including primitives, objects, and arrays
+ */
 type YAMLValue = string | number | boolean | null | YAMLObject | YAMLValue[]
 
+/**
+ * Represents a YAML object with string keys and YAML values
+ */
 interface YAMLObject {
   [key: string]: YAMLValue
 }
 
-// Simple YAML parser
+/**
+ * Parses a single YAML value string into its corresponding JavaScript type
+ * 
+ * @param value - The string value to parse
+ * @returns The parsed value as the appropriate JavaScript type
+ * 
+ * @example
+ * ```typescript
+ * parseYAMLValue("true") // returns true
+ * parseYAMLValue("42") // returns 42
+ * parseYAMLValue("\"hello\"") // returns "hello"
+ * parseYAMLValue("null") // returns null
+ * ```
+ */
 const parseYAMLValue = (value: string): YAMLValue => {
   const trimmed = value.trim()
 
@@ -44,6 +116,26 @@ const parseYAMLValue = (value: string): YAMLValue => {
   return trimmed
 }
 
+/**
+ * Main YAML parser function that converts YAML text into a JavaScript object
+ * 
+ * @param text - The YAML text to parse
+ * @returns A JavaScript object representing the parsed YAML structure
+ * @throws {SyntaxError} When the YAML syntax is invalid or indentation is incorrect
+ * 
+ * @example
+ * ```typescript
+ * const yamlText = `
+ * name: John
+ * age: 30
+ * hobbies:
+ *   - reading
+ *   - coding
+ * `;
+ * const result = parseYAML(yamlText);
+ * // Returns: { name: "John", age: 30, hobbies: ["reading", "coding"] }
+ * ```
+ */
 const parseYAML = (text: string): YAMLObject => {
   const lines = text.split("\n")
   const result: YAMLObject = {}
@@ -200,12 +292,87 @@ const parseYAML = (text: string): YAMLObject => {
   return result
 }
 
+/**
+ * YAML data format handler implementing the DataFormat interface
+ * Provides methods for loading and parsing YAML data into StructuredData objects
+ * 
+ * Features:
+ * - Custom YAML parser (no external dependencies)
+ * - Support for all major YAML constructs (objects, arrays, scalars)
+ * - Proper error handling with descriptive messages
+ * - Round-trip conversion capability with toYaml() method
+ * 
+ * @example
+ * ```typescript
+ * import { yaml } from './yaml.js';
+ * 
+ * // Parse YAML string
+ * const data = yaml.from(`
+ *   name: John
+ *   age: 30
+ *   hobbies: [reading, coding]
+ * `);
+ * 
+ * // Load YAML file
+ * const fileData = await yaml.loadFile('config.yaml');
+ * 
+ * // Convert back to YAML
+ * const yamlString = data.toYaml();
+ * ```
+ */
 const yaml: DataFormat = {
+  /**
+   * Loads and parses a YAML file into a StructuredData object
+   * 
+   * @param path - File path or file handle to the YAML file
+   * @returns Promise that resolves to a StructuredData object with originFormat 'yaml'
+   * @throws {Error} When file cannot be read or contains invalid YAML
+   * 
+   * @example
+   * ```typescript
+   * try {
+   *   const data = await yaml.loadFile('config.yaml');
+   *   console.log(data.data); // Access the parsed YAML data
+   *   console.log(data.originFormat); // 'yaml'
+   * } catch (error) {
+   *   console.error('Failed to load YAML file:', error.message);
+   * }
+   * ```
+   */
   loadFile: async function (path: PathLike | fs.FileHandle): Promise<StructuredData> {
     const text = (await fs.readFile(path)).toString()
     return yaml.from(text)
   },
 
+  /**
+   * Parses a YAML string into a StructuredData object
+   * 
+   * @param text - The YAML string to parse
+   * @returns A StructuredData object containing the parsed data with originFormat 'yaml'
+   * @throws {SyntaxError} When the YAML syntax is invalid, empty, or has incorrect indentation
+   * 
+   * @example
+   * ```typescript
+   * const yamlString = `
+   *   database:
+   *     host: localhost
+   *     port: 5432
+   *   servers:
+   *     - name: web1
+   *       roles: [web, api]
+   *     - name: db1
+   *       roles: [database]
+   * `;
+   * 
+   * try {
+   *   const data = yaml.from(yamlString);
+   *   console.log(data.data.database.host); // 'localhost'
+   *   console.log(data.data.servers[0].name); // 'web1'
+   * } catch (error) {
+   *   console.error('YAML parsing failed:', error.message);
+   * }
+   * ```
+   */
   from: function (text: string): StructuredData {
     if (!text.trim()) {
       throw new SyntaxError("Empty YAML document")
