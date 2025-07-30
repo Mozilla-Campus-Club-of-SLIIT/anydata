@@ -266,4 +266,153 @@ age: 30
       assert.strictEqual(yamlData.age, 30)
     })
   })
+
+  describe("toYaml", () => {
+    it("should convert simple YAML data back to YAML format", () => {
+      const originalYaml = `name: John Doe
+age: 30
+active: true`
+
+      const data = yaml.from(originalYaml)
+      const yamlOutput = data.toYaml()
+
+      assert.strictEqual(typeof yamlOutput, "string")
+
+      // Parse the output back to verify round-trip
+      const roundTrip = yaml.from(yamlOutput)
+      const originalData = data.data as Record<string, unknown>
+      const roundTripData = roundTrip.data as Record<string, unknown>
+
+      assert.strictEqual(roundTripData.name, originalData.name)
+      assert.strictEqual(roundTripData.age, originalData.age)
+      assert.strictEqual(roundTripData.active, originalData.active)
+    })
+
+    it("should convert complex nested structures to YAML", () => {
+      const complexYaml = `database:
+  host: localhost
+  port: 5432
+  credentials:
+    username: admin
+    password: secret
+servers:
+  - name: web1
+    roles:
+      - web
+      - api
+  - name: db1
+    roles:
+      - database`
+
+      const data = yaml.from(complexYaml)
+      const yamlOutput = data.toYaml()
+
+      // Verify round-trip conversion
+      const roundTrip = yaml.from(yamlOutput)
+      const originalData = data.data as Record<string, unknown>
+      const roundTripData = roundTrip.data as Record<string, unknown>
+
+      assert.deepStrictEqual(roundTripData.database, originalData.database)
+      assert.deepStrictEqual(roundTripData.servers, originalData.servers)
+    })
+
+    it("should handle arrays correctly in YAML output", () => {
+      const arrayYaml = `hobbies:
+  - reading
+  - swimming
+  - coding
+numbers:
+  - 1
+  - 2
+  - 3`
+
+      const data = yaml.from(arrayYaml)
+      const yamlOutput = data.toYaml()
+
+      const roundTrip = yaml.from(yamlOutput)
+      const originalData = data.data as Record<string, unknown>
+      const roundTripData = roundTrip.data as Record<string, unknown>
+
+      assert.deepStrictEqual(roundTripData.hobbies, originalData.hobbies)
+      assert.deepStrictEqual(roundTripData.numbers, originalData.numbers)
+    })
+
+    it("should handle different data types in YAML output", () => {
+      const typesYaml = `string_value: hello
+number_value: 42
+boolean_true: true
+boolean_false: false
+null_value: null`
+
+      const data = yaml.from(typesYaml)
+      const yamlOutput = data.toYaml()
+
+      const roundTrip = yaml.from(yamlOutput)
+      const originalData = data.data as Record<string, unknown>
+      const roundTripData = roundTrip.data as Record<string, unknown>
+
+      assert.strictEqual(roundTripData.string_value, originalData.string_value)
+      assert.strictEqual(roundTripData.number_value, originalData.number_value)
+      assert.strictEqual(roundTripData.boolean_true, originalData.boolean_true)
+      assert.strictEqual(roundTripData.boolean_false, originalData.boolean_false)
+      assert.strictEqual(roundTripData.null_value, originalData.null_value)
+    })
+
+    it("should quote strings that look like other types", () => {
+      const specialStringYaml = `normal: hello
+looks_like_number: "123"
+looks_like_boolean: "true"
+has_colon: "key: value"
+has_hash: "text # comment"`
+
+      const data = yaml.from(specialStringYaml)
+      const yamlOutput = data.toYaml()
+
+      const roundTrip = yaml.from(yamlOutput)
+      const originalData = data.data as Record<string, unknown>
+      const roundTripData = roundTrip.data as Record<string, unknown>
+
+      assert.strictEqual(roundTripData.looks_like_number, originalData.looks_like_number)
+      assert.strictEqual(roundTripData.looks_like_boolean, originalData.looks_like_boolean)
+      assert.strictEqual(roundTripData.has_colon, originalData.has_colon)
+      assert.strictEqual(roundTripData.has_hash, originalData.has_hash)
+    })
+
+    it("should throw error when trying to convert non-YAML data to YAML", () => {
+      const jsonData = { name: "John", age: 30 }
+      const structuredData = new StructuredData(jsonData, "json")
+
+      assert.throws(() => structuredData.toYaml(), {
+        name: "Error",
+        message: "Cannot convert to YAML: data was not originally in YAML format"
+      })
+    })
+
+    it("should handle empty objects and arrays", () => {
+      const emptyYaml = `empty_object: {}
+empty_array: []
+nested:
+  empty_obj: {}
+  empty_arr: []`
+
+      const data = yaml.from(emptyYaml)
+      const yamlOutput = data.toYaml()
+
+      const roundTrip = yaml.from(yamlOutput)
+      const originalData = data.data as Record<string, unknown>
+      const roundTripData = roundTrip.data as Record<string, unknown>
+
+      assert.deepStrictEqual(roundTripData, originalData)
+    })
+
+    it("should maintain data integrity in round-trip conversion", () => {
+      const data = yaml.from(complexYaml)
+      const yamlOutput = data.toYaml()
+      const roundTrip = yaml.from(yamlOutput)
+
+      // The round-trip data should be equivalent to the original
+      assert.deepStrictEqual(roundTrip.data, data.data)
+      assert.strictEqual(roundTrip.originFormat, "yaml")
+    })
+  })
 })
