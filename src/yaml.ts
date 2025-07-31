@@ -1,10 +1,10 @@
 /**
  * @fileoverview YAML format support for the anydata library
- * 
+ *
  * This module provides comprehensive YAML parsing and serialization capabilities
  * without external dependencies. It implements a custom YAML parser that supports
  * all major YAML constructs and provides round-trip conversion capability.
- * 
+ *
  * Features:
  * - Custom YAML parser (no external dependencies)
  * - Support for all YAML data types (scalars, sequences, mappings)
@@ -12,7 +12,7 @@
  * - Round-trip conversion (YAML → JavaScript → YAML)
  * - Comprehensive error handling and validation
  * - Integration with StructuredData class for format-agnostic operations
- * 
+ *
  * Supported YAML features:
  * - Scalars: strings, numbers, booleans, null
  * - Collections: sequences (arrays), mappings (objects)
@@ -21,11 +21,11 @@
  * - Quoted and unquoted strings
  * - Multi-level nesting
  * - Proper indentation handling
- * 
+ *
  * @example
  * ```typescript
  * import { yaml } from './yaml.js';
- * 
+ *
  * // Parse YAML string
  * const data = yaml.from(`
  *   application:
@@ -36,18 +36,18 @@
  *       - logging
  *       - monitoring
  * `);
- * 
+ *
  * // Access parsed data
  * console.log(data.data.application.name); // "MyApp"
  * console.log(data.originFormat); // "yaml"
- * 
+ *
  * // Convert back to YAML
  * const yamlString = data.toYaml();
- * 
+ *
  * // Load from file
  * const fileData = await yaml.loadFile('config.yaml');
  * ```
- * 
+ *
  * @author Mozilla Campus Club of SLIIT
  * @since 1.0.0
  */
@@ -55,25 +55,20 @@
 import { promises as fs, PathLike } from "fs"
 import DataFormat from "./types/DataFormat.js"
 import StructuredData from "./StructuredData.js"
-import {
-  YAMLValue,
-  YAMLObject,
-  YAMLParserStackItem,
-  YAML_CONSTANTS
-} from "./types/yaml.js"
+import { YAMLValue, YAMLObject, YAMLParserStackItem, YAML_CONSTANTS } from "./types/yaml.js"
 import {
   shouldSkipLine,
   getIndentLevel,
   removeInlineComments,
-  parseScalarValue
+  parseScalarValue,
 } from "./utils/yaml.js"
 
 /**
  * Parses a single YAML value string into its corresponding JavaScript type
- * 
+ *
  * @param value - The string value to parse
  * @returns The parsed value as the appropriate JavaScript type
- * 
+ *
  * @example
  * ```typescript
  * parseYAMLValue("true") // returns true
@@ -88,7 +83,7 @@ const parseYAMLValue = (value: string): YAMLValue => {
 
 /**
  * Checks if the current indentation is invalid based on the parser state
- * 
+ *
  * @param indent - Current line indentation
  * @param lastCompletedKeyIndent - Last completed key-value pair indentation
  * @param stack - Parser stack
@@ -97,7 +92,7 @@ const parseYAMLValue = (value: string): YAMLValue => {
 function isInvalidIndentation(
   indent: number,
   lastCompletedKeyIndent: number,
-  stack: YAMLParserStackItem[]
+  stack: YAMLParserStackItem[],
 ): boolean {
   if (indent <= 0) return false
 
@@ -127,7 +122,7 @@ function isInvalidIndentation(
 
 /**
  * Handles parsing of list items
- * 
+ *
  * @param current - Current parser context
  * @param itemContent - Content of the list item
  * @param stack - Parser stack
@@ -139,7 +134,7 @@ function handleListItem(
   itemContent: string,
   stack: YAMLParserStackItem[],
   indent: number,
-  lineNumber: number
+  lineNumber: number,
 ): void {
   // Ensure we're in an array context
   if (!Array.isArray(current.obj)) {
@@ -174,7 +169,7 @@ function handleListItem(
 
 /**
  * Handles parsing of key-value pairs
- * 
+ *
  * @param current - Current parser context
  * @param trimmed - Trimmed line content
  * @param stack - Parser stack
@@ -189,7 +184,7 @@ function handleKeyValuePair(
   stack: YAMLParserStackItem[],
   indent: number,
   lines: string[],
-  lineIndex: number
+  lineIndex: number,
 ): number {
   const colonIndex = trimmed.indexOf(":")
   const key = trimmed.substring(0, colonIndex).trim()
@@ -230,7 +225,7 @@ function handleKeyValuePair(
 
 /**
  * Looks ahead in the lines to determine if there's nested content
- * 
+ *
  * @param lines - All lines being parsed
  * @param currentIndex - Current line index
  * @param currentIndent - Current indentation level
@@ -239,7 +234,7 @@ function handleKeyValuePair(
 function lookAheadForNestedContent(
   lines: string[],
   currentIndex: number,
-  currentIndent: number
+  currentIndent: number,
 ): { found: boolean; isArray: boolean } {
   let nextLineIndex = currentIndex + 1
 
@@ -251,7 +246,7 @@ function lookAheadForNestedContent(
       if (nextIndent > currentIndent) {
         return {
           found: true,
-          isArray: nextLine.startsWith(YAML_CONSTANTS.LIST_PREFIX)
+          isArray: nextLine.startsWith(YAML_CONSTANTS.LIST_PREFIX),
         }
       } else {
         // Same or lower indent, no nested content
@@ -266,11 +261,11 @@ function lookAheadForNestedContent(
 
 /**
  * Main YAML parser function that converts YAML text into a JavaScript object
- * 
+ *
  * @param text - The YAML text to parse
  * @returns A JavaScript object representing the parsed YAML structure
  * @throws {SyntaxError} When the YAML syntax is invalid or indentation is incorrect
- * 
+ *
  * @example
  * ```typescript
  * const yamlText = `
@@ -287,11 +282,13 @@ function lookAheadForNestedContent(
 const parseYAML = (text: string): YAMLObject => {
   const lines = text.split("\n")
   const result: YAMLObject = {}
-  const stack: YAMLParserStackItem[] = [{
-    obj: result,
-    indent: YAML_CONSTANTS.ROOT_INDENT,
-    expectsNested: true
-  }]
+  const stack: YAMLParserStackItem[] = [
+    {
+      obj: result,
+      indent: YAML_CONSTANTS.ROOT_INDENT,
+      expectsNested: true,
+    },
+  ]
   let lastCompletedKeyIndent: number = YAML_CONSTANTS.ROOT_INDENT
 
   for (let i = 0; i < lines.length; i++) {
@@ -329,14 +326,7 @@ const parseYAML = (text: string): YAMLObject => {
 
     // Handle key-value pairs
     if (trimmed.includes(":")) {
-      lastCompletedKeyIndent = handleKeyValuePair(
-        current,
-        trimmed,
-        stack,
-        indent,
-        lines,
-        i
-      )
+      lastCompletedKeyIndent = handleKeyValuePair(current, trimmed, stack, indent, lines, i)
     }
   }
 
@@ -346,27 +336,27 @@ const parseYAML = (text: string): YAMLObject => {
 /**
  * YAML data format handler implementing the DataFormat interface
  * Provides methods for loading and parsing YAML data into StructuredData objects
- * 
+ *
  * Features:
  * - Custom YAML parser (no external dependencies)
  * - Support for all major YAML constructs (objects, arrays, scalars)
  * - Proper error handling with descriptive messages
  * - Round-trip conversion capability with toYaml() method
- * 
+ *
  * @example
  * ```typescript
  * import { yaml } from './yaml.js';
- * 
+ *
  * // Parse YAML string
  * const data = yaml.from(`
  *   name: John
  *   age: 30
  *   hobbies: [reading, coding]
  * `);
- * 
+ *
  * // Load YAML file
  * const fileData = await yaml.loadFile('config.yaml');
- * 
+ *
  * // Convert back to YAML
  * const yamlString = data.toYaml();
  * ```
@@ -374,11 +364,11 @@ const parseYAML = (text: string): YAMLObject => {
 const yaml: DataFormat = {
   /**
    * Loads and parses a YAML file into a StructuredData object
-   * 
+   *
    * @param path - File path or file handle to the YAML file
    * @returns Promise that resolves to a StructuredData object with originFormat 'yaml'
    * @throws {Error} When file cannot be read or contains invalid YAML
-   * 
+   *
    * @example
    * ```typescript
    * try {
@@ -397,11 +387,11 @@ const yaml: DataFormat = {
 
   /**
    * Parses a YAML string into a StructuredData object
-   * 
+   *
    * @param text - The YAML string to parse
    * @returns A StructuredData object containing the parsed data with originFormat 'yaml'
    * @throws {SyntaxError} When the YAML syntax is invalid, empty, or has incorrect indentation
-   * 
+   *
    * @example
    * ```typescript
    * const yamlString = `
@@ -414,7 +404,7 @@ const yaml: DataFormat = {
    *     - name: db1
    *       roles: [database]
    * `;
-   * 
+   *
    * try {
    *   const data = yaml.from(yamlString);
    *   console.log(data.data.database.host); // 'localhost'
@@ -436,9 +426,10 @@ const yaml: DataFormat = {
       if (error instanceof SyntaxError) {
         throw error
       }
-      const message = typeof error === "object" && error !== null && "message" in error
-        ? (error as { message: string }).message
-        : String(error)
+      const message =
+        typeof error === "object" && error !== null && "message" in error
+          ? (error as { message: string }).message
+          : String(error)
       throw new SyntaxError(`Invalid YAML: ${message}`)
     }
   },

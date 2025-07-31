@@ -73,28 +73,22 @@ describe("yaml", () => {
       assert.deepStrictEqual(yamlData.address, {
         street: "123 Main St",
         city: "New York",
-        zipcode: 10001
+        zipcode: 10001,
       })
       assert.deepStrictEqual(yamlData.hobbies, ["reading", "swimming", "coding"])
     })
 
     it("should throw an error for a file with invalid yaml", async () => {
-      await assert.rejects(
-        async () => await yaml.loadFile("invalid.yaml"),
-        {
-          name: "SyntaxError"
-        }
-      )
+      await assert.rejects(async () => await yaml.loadFile("invalid.yaml"), {
+        name: "SyntaxError",
+      })
     })
 
     it("should throw an error if the file is not found", async () => {
-      await assert.rejects(
-        async () => await yaml.loadFile("nonexistent.yaml"),
-        {
-          name: "Error",
-          message: "ENOENT: no such file or directory, open 'nonexistent.yaml'"
-        }
-      )
+      await assert.rejects(async () => await yaml.loadFile("nonexistent.yaml"), {
+        name: "Error",
+        message: "ENOENT: no such file or directory, open 'nonexistent.yaml'",
+      })
     })
   })
 
@@ -124,8 +118,8 @@ describe("yaml", () => {
         credentials: {
           username: "admin",
           password: "secret",
-          ssl: true
-        }
+          ssl: true,
+        },
       })
 
       assert.ok(Array.isArray(yamlData.servers))
@@ -229,13 +223,13 @@ users:
     it("should throw an error for empty yaml", () => {
       assert.throws(() => yaml.from(""), {
         name: "SyntaxError",
-        message: "Empty YAML document"
+        message: "Empty YAML document",
       })
     })
 
     it("should throw an error for invalid yaml syntax", () => {
       assert.throws(() => yaml.from("name: John\n  invalid: indentation"), {
-        name: "SyntaxError"
+        name: "SyntaxError",
       })
     })
 
@@ -385,7 +379,7 @@ has_hash: "text # comment"`
 
       assert.throws(() => structuredData.toYaml(), {
         name: "Error",
-        message: "Cannot convert to YAML: data was not originally in YAML format"
+        message: "Cannot convert to YAML: data was not originally in YAML format",
       })
     })
 

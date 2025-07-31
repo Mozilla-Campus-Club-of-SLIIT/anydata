@@ -1,19 +1,14 @@
 import { compareArrays } from "./utils/common.js"
 import type { YAMLValue, YAMLObject } from "./types/yaml.js"
 
-
 type XMLValue = string | XMLObject | XMLValue[]
-
 
 interface XMLObject {
   [key: string]: string | XMLValue
 }
 
-
 export default class StructuredData {
-
   private _data: object
-
 
   originFormat: "csv" | "json" | "xml" | "yaml"
 
@@ -72,18 +67,18 @@ export default class StructuredData {
 
   /**
    * Private static method for processing YAML data for the data getter
-   * 
+   *
    * This method returns the YAML data directly since YAML data is already in a
    * JavaScript-friendly format after parsing. Unlike XML data which needs significant
    * transformation, YAML data maintains its structure and doesn't require additional
    * processing for the clean data getter.
-   * 
+   *
    * @param data - The parsed YAML object data
    * @returns The same YAML object (direct pass-through)
-   * 
+   *
    * @private
    * @static
-   * 
+   *
    * @example
    * ```typescript
    * const yamlData = {
@@ -91,7 +86,7 @@ export default class StructuredData {
    *   age: 30,
    *   hobbies: ["reading", "coding"]
    * };
-   * 
+   *
    * const result = StructuredData._getYamlData(yamlData);
    * // Returns the exact same object: { name: "John", age: 30, hobbies: ["reading", "coding"] }
    * console.log(result === yamlData); // true (direct reference)
@@ -101,7 +96,6 @@ export default class StructuredData {
     // Return the data directly since we're now passing parsed YAML objects
     return data
   }
-
 
   get data(): object {
     // data getter attempts to return data in a more javascript friendly way
@@ -139,11 +133,11 @@ export default class StructuredData {
 
   /**
    * Converts the StructuredData back to YAML format string
-   * 
+   *
    * This method serializes the internal data structure back into valid YAML format.
    * It only works on data that was originally loaded from YAML format to maintain
    * data integrity and preserve the original structure.
-   * 
+   *
    * Features:
    * - Preserves data types (strings, numbers, booleans, null)
    * - Maintains proper YAML indentation (2 spaces)
@@ -151,10 +145,10 @@ export default class StructuredData {
    * - Quotes strings that could be ambiguous (look like numbers, booleans, etc.)
    * - Supports empty objects and arrays
    * - Ensures round-trip compatibility
-   * 
+   *
    * @returns A valid YAML string representation of the data
    * @throws {Error} When called on data that was not originally in YAML format
-   * 
+   *
    * @example
    * ```typescript
    * // Load YAML data
@@ -165,7 +159,7 @@ export default class StructuredData {
    *     - reading
    *     - coding
    * `);
-   * 
+   *
    * // Convert back to YAML
    * const yamlString = data.toYaml();
    * console.log(yamlString);
@@ -175,12 +169,12 @@ export default class StructuredData {
    * // hobbies:
    * //   - reading
    * //   - coding
-   * 
+   *
    * // Verify round-trip conversion
    * const roundTrip = yaml.from(yamlString);
    * assert.deepStrictEqual(data.data, roundTrip.data); // true
    * ```
-   * 
+   *
    * @example
    * ```typescript
    * // Error case - non-YAML data
@@ -197,16 +191,16 @@ export default class StructuredData {
 
   /**
    * Private helper method for recursively serializing data to YAML format
-   * 
+   *
    * This method handles the recursive traversal of nested data structures and
    * converts them to properly formatted YAML strings with correct indentation.
-   * 
+   *
    * @param data - The data to serialize (any valid YAML value type)
    * @param indent - Current indentation level (number of 2-space indents)
    * @returns A YAML string representation of the data
-   * 
+   *
    * @private
-   * 
+   *
    * Handles the following data types:
    * - `null`: Converts to "null"
    * - `string`: Quotes if contains special characters or looks like other types
@@ -214,7 +208,7 @@ export default class StructuredData {
    * - `array`: Converts to YAML list format with "-" prefix
    * - `object`: Converts to YAML mapping format with key-value pairs
    * - Empty arrays/objects: Uses compact notation "[]" and "{}"
-   * 
+   *
    * @example
    * ```typescript
    * // Internal usage examples (private method):
@@ -238,10 +232,14 @@ export default class StructuredData {
 
     if (typeof data === "string") {
       // Quote strings that contain special characters or look like other types
-      if (data.includes(":") || data.includes("#") || data.includes("-") ||
+      if (
+        data.includes(":") ||
+        data.includes("#") ||
+        data.includes("-") ||
         /^(true|false|null|yes|no|on|off|~)$/i.test(data) ||
         /^-?\d+(\.\d+)?$/.test(data) ||
-        data.trim() !== data) {
+        data.trim() !== data
+      ) {
         return `"${data}"`
       }
       return data
@@ -255,14 +253,19 @@ export default class StructuredData {
       if (data.length === 0) {
         return "[]"
       }
-      return data.map(item => {
-        const serialized = this.serializeToYaml(item, indent + 1)
-        if (typeof item === "object" && item !== null && !Array.isArray(item)) {
-          const lines = serialized.split("\n")
-          return `${indentStr}- ${lines[0]}\n${lines.slice(1).map(line => `  ${indentStr}${line}`).join("\n")}`
-        }
-        return `${indentStr}- ${serialized}`
-      }).join("\n")
+      return data
+        .map((item) => {
+          const serialized = this.serializeToYaml(item, indent + 1)
+          if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+            const lines = serialized.split("\n")
+            return `${indentStr}- ${lines[0]}\n${lines
+              .slice(1)
+              .map((line) => `  ${indentStr}${line}`)
+              .join("\n")}`
+          }
+          return `${indentStr}- ${serialized}`
+        })
+        .join("\n")
     }
 
     if (typeof data === "object") {
@@ -271,21 +274,23 @@ export default class StructuredData {
         return "{}"
       }
 
-      return entries.map(([key, value]) => {
-        const serializedValue = this.serializeToYaml(value, indent + 1)
+      return entries
+        .map(([key, value]) => {
+          const serializedValue = this.serializeToYaml(value, indent + 1)
 
-        if (typeof value === "object" && value !== null) {
-          if (Array.isArray(value) && value.length > 0) {
-            return `${indentStr}${key}:\n${serializedValue}`
-          } else if (!Array.isArray(value) && Object.keys(value).length > 0) {
-            return `${indentStr}${key}:\n${serializedValue}`
+          if (typeof value === "object" && value !== null) {
+            if (Array.isArray(value) && value.length > 0) {
+              return `${indentStr}${key}:\n${serializedValue}`
+            } else if (!Array.isArray(value) && Object.keys(value).length > 0) {
+              return `${indentStr}${key}:\n${serializedValue}`
+            } else {
+              return `${indentStr}${key}: ${serializedValue}`
+            }
           } else {
             return `${indentStr}${key}: ${serializedValue}`
           }
-        } else {
-          return `${indentStr}${key}: ${serializedValue}`
-        }
-      }).join("\n")
+        })
+        .join("\n")
     }
 
     return String(data)
