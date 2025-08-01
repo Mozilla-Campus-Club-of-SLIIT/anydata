@@ -54,6 +54,7 @@ export const YAML_CONSTANTS = {
 
   /** Quote characters */
   QUOTES: {
+    // eslint-disable-next-line quotes
     DOUBLE: '"',
     SINGLE: "'",
   } as const,
