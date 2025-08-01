@@ -54,7 +54,7 @@ export const YAML_CONSTANTS = {
 
   /** Quote characters */
   QUOTES: {
-    DOUBLE: "\"",
+    DOUBLE: '"',
     SINGLE: "'",
   } as const,
 
