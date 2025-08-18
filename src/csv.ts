@@ -15,7 +15,7 @@ const csv: DataFormat = {
     // - Inside quoted fields, double quotes are escaped by repeating them
     // - CRLF or LF line endings supported
 
-    const rows: string[] = []
+  const rows: string[][] = []
     const n = text.length
     let i = 0
     let field = ""
@@ -65,7 +65,7 @@ const csv: DataFormat = {
             i++
           }
           row.push(field)
-          rows.push(row.join(","))
+          rows.push(row)
           row = []
           field = ""
           i++
@@ -74,7 +74,7 @@ const csv: DataFormat = {
 
         if (c === "\n") {
           row.push(field)
-          rows.push(row.join(","))
+          rows.push(row)
           row = []
           field = ""
           i++
@@ -86,26 +86,18 @@ const csv: DataFormat = {
       }
     }
 
-    // push last field/row
+  // push last field/row
     if (inQuotes) throw new SyntaxError("Unexpected EOF while inside quoted field")
     row.push(field)
     // if the file ends with an empty trailing newline, avoid pushing an extra empty row
     if (!(row.length === 1 && row[0] === "" && rows.length === 0 && n === 0)) {
-      // join row into csv line and push
-      rows.push(row.join(','))
+      rows.push(row)
     }
 
-    // split rows into arrays and take header
-    const parsedRows = rows.map((r) => {
-      // split on commas that are not inside quotes; but we've already handled quotes
-      // simply split by comma
-      return r.split(',')
-    })
+  if (rows.length === 0) return new StructuredData([], "csv")
 
-    if (parsedRows.length === 0) return new StructuredData([], "csv")
-
-    const header = parsedRows[0]
-    const data = parsedRows.slice(1).map((cols) => {
+  const header = rows[0]
+  const data = rows.slice(1).map((cols) => {
       const obj: Record<string, string> = {}
       for (let idx = 0; idx < header.length; idx++) {
         const key = header[idx] || `field${idx}`

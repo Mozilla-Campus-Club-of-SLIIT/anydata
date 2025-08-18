@@ -70,7 +70,8 @@ export default class StructuredData {
     // that's the reason to maintain a separate _data field and a data getter
     switch (this.originFormat) {
       case "csv":
-        throw new TypeError("Format not supported")
+        // CSV data is stored as an array of objects (rows), return as-is
+        return this._data
       case "xml":
         const rootKey = Object.keys(this._data)[0]
         const root = (this._data as XMLObject)[rootKey]
