@@ -4,7 +4,8 @@ import StructuredData from "./StructuredData.js"
 
 const csv: DataFormat = {
   loadFile: async function (path: PathLike | fs.FileHandle): Promise<StructuredData> {
-    throw new Error("Function not implemented.")
+  const text = (await fs.readFile(path)).toString()
+  return csv.from(text)
   },
 
   from: function (text: string): StructuredData {
