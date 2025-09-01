@@ -4,8 +4,8 @@ import StructuredData from "./StructuredData.js"
 
 const csv: DataFormat = {
   loadFile: async function (path: PathLike | fs.FileHandle): Promise<StructuredData> {
-  const text = (await fs.readFile(path)).toString()
-  return csv.from(text)
+    const text = (await fs.readFile(path)).toString()
+    return csv.from(text)
   },
 
   from: function (text: string): StructuredData {
@@ -15,7 +15,7 @@ const csv: DataFormat = {
     // - Inside quoted fields, double quotes are escaped by repeating them
     // - CRLF or LF line endings supported
 
-  const rows: string[][] = []
+    const rows: string[][] = []
     const n = text.length
     let i = 0
     let field = ""
@@ -26,11 +26,11 @@ const csv: DataFormat = {
       const c = text[i]
 
       if (inQuotes) {
-        if (c === "\"") {
+        if (c === '"') {
           const next = text[i + 1]
-          if (next === "\"") {
+          if (next === '"') {
             // escaped quote
-            field += "\""
+            field += '"'
             i += 2
             continue
           } else {
@@ -45,7 +45,7 @@ const csv: DataFormat = {
           continue
         }
       } else {
-        if (c === "\"") {
+        if (c === '"') {
           inQuotes = true
           i++
           continue
@@ -86,7 +86,7 @@ const csv: DataFormat = {
       }
     }
 
-  // push last field/row
+    // push last field/row
     if (inQuotes) throw new SyntaxError("Unexpected EOF while inside quoted field")
     row.push(field)
     // if the file ends with an empty trailing newline, avoid pushing an extra empty row
@@ -94,10 +94,10 @@ const csv: DataFormat = {
       rows.push(row)
     }
 
-  if (rows.length === 0) return new StructuredData([], "csv")
+    if (rows.length === 0) return new StructuredData([], "csv")
 
-  const header = rows[0]
-  const data = rows.slice(1).map((cols) => {
+    const header = rows[0]
+    const data = rows.slice(1).map((cols) => {
       const obj: Record<string, string> = {}
       for (let idx = 0; idx < header.length; idx++) {
         const key = header[idx] || `field${idx}`
