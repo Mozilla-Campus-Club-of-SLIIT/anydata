@@ -70,13 +70,7 @@ export default class StructuredData {
     // that's the reason to maintain a separate _data field and a data getter
     switch (this.originFormat) {
       case "csv":
-        // CSV data is stored as an array of objects (rows).
-        // Return a more explicit shape with header and rows so callers
-        // can access the original header if needed.
-        if (!Array.isArray(this._data)) return this._data
-        const rows = this._data as Record<string, string>[]
-        const header = rows.length > 0 ? Object.keys(rows[0]) : []
-        return { header, rows }
+        return this._data
       case "xml":
         const rootKey = Object.keys(this._data)[0]
         const root = (this._data as XMLObject)[rootKey]

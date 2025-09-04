@@ -8,6 +8,7 @@ const parse = (text: string): string[][] => {
   // - Fields may be quoted with double quotes
   // - Inside quoted fields, double quotes are escaped by repeating them
   // - CRLF or LF line endings supported
+  text = text.trim()
 
   const rows: string[][] = []
   const n = text.length
@@ -15,6 +16,7 @@ const parse = (text: string): string[][] => {
   let field = ""
   let row: string[] = []
   let inQuotes = false
+  let colCount: number = 0
 
   while (i < n) {
     const c = text[i]
@@ -53,11 +55,8 @@ const parse = (text: string): string[][] => {
       }
 
       // handle CRLF and LF
-      if (c === "\r") {
-        // skip CR, check for LF
-        if (text[i + 1] === "\n") {
-          i++
-        }
+      if (c === "\r" || c === "\n") {
+        if (c === "\r" && text[i + 1] === "\n") i++ // skip LF in CRLF
         row.push(field)
         rows.push(row)
         row = []
@@ -66,14 +65,6 @@ const parse = (text: string): string[][] => {
         continue
       }
 
-      if (c === "\n") {
-        row.push(field)
-        rows.push(row)
-        row = []
-        field = ""
-        i++
-        continue
-      }
 
       field += c
       i++
