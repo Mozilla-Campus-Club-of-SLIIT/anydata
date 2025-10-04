@@ -132,18 +132,16 @@ Bob,25,London`
 
     it("should handle empty input", () => {
       const text = ""
-      const data = csv.from(text, { header: true })
-      assert.ok(data instanceof StructuredData)
-      const payload = data.data as Record<string, string>[]
-      assert.strictEqual(payload.length, 0)
+      assert.throws(() => csv.from(text, { header: true }), {
+        message: "Data cannot be empty",
+      })
     })
 
     it("should handle input with only newlines", () => {
       const text = "\n\n"
-      const data = csv.from(text, { header: true })
-      assert.ok(data instanceof StructuredData)
-      const payload = data.data as Record<string, string>[]
-      assert.strictEqual(payload.length, 0)
+      assert.throws(() => csv.from(text, { header: true }), {
+        message: "Data cannot be empty",
+      })
     })
 
     it("should handle ambigious newlines within quoted fields", () => {

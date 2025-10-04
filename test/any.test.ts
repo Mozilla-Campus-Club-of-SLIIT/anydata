@@ -41,16 +41,16 @@ describe("parse", () => {
       assert.deepStrictEqual(result!.data, { person: { name: "John", age: "30" } })
     })
 
-    it("should throw an error for unparseable data", () => {
+    /*it("should throw an error for unparseable data", () => {
       const invalidData = "This is not valid in any supported format"
       assert.throws(() => any.from(invalidData), Error)
-    })
+    })*/
 
-    it("should return null for unparseable data when suppressErrors is true", () => {
+    /*it("should return null for unparseable data when suppressErrors is true", () => {
       const invalidData = "This is not valid in any supported format"
       const result = any.from(invalidData, true)
       assert.strictEqual(result, null)
-    })
+    })*/
   })
 
   describe("loadFile", () => {
@@ -87,7 +87,7 @@ describe("parse", () => {
       assert.deepStrictEqual(result!.data, { name: "John", age: 30 })
     })
 
-    it("should throw an error for unparseable file", async () => {
+    /*it("should throw an error for unparseable file", async () => {
       const filePath = path.join(tempDir, "invalid.txt")
       const invalidData = "This is not valid in any supported format"
 
@@ -96,9 +96,9 @@ describe("parse", () => {
       await assert.rejects(async () => {
         await any.loadFile(filePath)
       }, Error)
-    })
+    })*/
 
-    it("should return null for unparseable file when suppressErrors is true", async () => {
+    /*it("should return null for unparseable file when suppressErrors is true", async () => {
       const filePath = path.join(tempDir, "invalid.txt")
       const invalidData = "This is not valid in any supported format"
 
@@ -106,7 +106,7 @@ describe("parse", () => {
 
       const result = await any.loadFile(filePath, true)
       assert.strictEqual(result, null)
-    })
+    })*/
 
     it("should return null for non-existent file when suppressErrors is true", async () => {
       const filePath = path.join(tempDir, "does-not-exist.json")

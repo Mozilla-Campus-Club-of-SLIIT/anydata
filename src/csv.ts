@@ -10,6 +10,8 @@ const parse = (text: string): string[][] => {
   // - CRLF or LF line endings supported
   text = text.trim()
 
+  if (text.length === 0) throw new SyntaxError("Data cannot be empty")
+
   const rows: string[][] = []
   const n = text.length
   let i = 0
