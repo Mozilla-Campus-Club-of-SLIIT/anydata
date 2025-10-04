@@ -65,7 +65,6 @@ const parse = (text: string): string[][] => {
         continue
       }
 
-
       field += c
       i++
     }

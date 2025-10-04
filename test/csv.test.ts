@@ -4,7 +4,6 @@ import { csv, StructuredData } from "../src/index.js"
 
 describe("csv", () => {
   describe("loadFile", () => {
-
     const simpleNoHeaderCsv = `Alice,30,Paris
 Bob,25,London`
 
@@ -85,7 +84,6 @@ Bob,25,London`
   })
 
   describe("from", () => {
-
     it("should create a StructuredData object when header option is ignored", () => {
       const text = "Alice,30,Paris\nBob,25,London"
       const data1 = csv.from(text)
