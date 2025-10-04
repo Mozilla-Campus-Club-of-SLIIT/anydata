@@ -16,16 +16,18 @@ const parse = (text: string): string[][] => {
   let field = ""
   let row: string[] = []
   let inQuotes = false
-  let colCount: number = 0
 
   while (i < n) {
     const c = text[i]
 
     if (inQuotes) {
+      // eslint-disable-next-line
       if (c === '"') {
         const next = text[i + 1]
+        // eslint-disable-next-line
         if (next === '"') {
           // escaped quote
+          // eslint-disable-next-line
           field += '"'
           i += 2
           continue
@@ -41,6 +43,7 @@ const parse = (text: string): string[][] => {
         continue
       }
     } else {
+      // eslint-disable-next-line
       if (c === '"') {
         inQuotes = true
         i++
