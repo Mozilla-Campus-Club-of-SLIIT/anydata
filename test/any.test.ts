@@ -5,6 +5,7 @@ import path from "path"
 import fs from "fs"
 import { fileURLToPath } from "url"
 
+// Resolve __dirname/__filename for ESM so we can write temp fixtures nearby
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -27,6 +28,7 @@ describe("parse", () => {
   })
 
   describe("from", () => {
+    // Make sure in-memory parsing detects formats correctly
     it("should detect and parse JSON data from string", () => {
       const jsonData = '{"name":"John","age":30}'
       const result = any.from(jsonData)
@@ -54,6 +56,7 @@ describe("parse", () => {
   })
 
   describe("loadFile", () => {
+    // Same tests as above but through the file-loading path
     it("should detect and parse JSON data from file", async () => {
       const filePath = path.join(tempDir, "test.json")
       const jsonData = '{"name":"John","age":30}'
@@ -122,6 +125,7 @@ describe("parse", () => {
   })
 
   describe("Edge cases", () => {
+    // Input hygiene checks so we know the facade reacts nicely
     it("should handle empty input", () => {
       assert.throws(() => any.from(""), Error)
     })

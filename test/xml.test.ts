@@ -2,6 +2,7 @@ import assert from "assert"
 import { promises as fs } from "fs"
 import { xml, StructuredData } from "../src/index.js"
 
+// Rich XML sample that includes comments, CDATA, attributes, and multiple books
 const libraryXml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <?process instruction?>
@@ -28,8 +29,10 @@ const libraryXml = `<?xml version="1.0" encoding="UTF-8"?>
   </book>
 </library>`
 
+// Covers both file-based and string-based parsing for the XML adapter
 describe("xml", () => {
   describe("loadFile", () => {
+    // Validates the disk-reading helper path
     before(async () => {
       // create file with valid xml
       await fs.writeFile("test.xml", libraryXml)
@@ -67,6 +70,7 @@ describe("xml", () => {
   })
 
   describe("from", () => {
+    // All direct-string parsing checks live here
     it("should create a StructuredData object with valid xml", async () => {
       const data = xml.from(libraryXml)
 
@@ -139,7 +143,7 @@ describe("xml", () => {
       assert.strictEqual(item.value, "Example")
     })
 
-    // this is more of a StrucuturedData test, I'll leave it here so we can copy paste it later
+    // this is more of a StrucuturedData test
     /*
     it("it should group common items", () => {
       const groupedXml = `<root>

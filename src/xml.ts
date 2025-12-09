@@ -5,6 +5,10 @@ import { replaceHTMLEntities } from "./utils/common.js"
 
 // https://www.w3.org/TR/xml/
 // https://xmlbeans.apache.org/docs/2.0.0/guide/conUnderstandingXMLTokens.html
+/**
+ * Token types we expect to see while walking through XML text. Keeping them in
+ * one place makes it easier to reason about the tokenizer state machine.
+ */
 type TokenType =
   | "COMMENT"
   | "CDATA"
@@ -17,11 +21,16 @@ type TokenType =
   | "ATTR_VALUE"
   | "TEXT"
 
+/** Simple token container that stores both the token type and its raw text. */
 interface Token {
   type: TokenType
   value: string
 }
 
+/**
+ * Minimal tree node representation used while building the XML structure.
+ * Tracks parent, children, tag name, attributes, and text value separately.
+ */
 interface Node {
   parent: Node | null
   children: Node[]
@@ -30,11 +39,19 @@ interface Node {
   attributes: Record<string, string>
 }
 
+/**
+ * XML values can be plain strings, nested objects, or arrays of more values.
+ * This mirrors how StructuredData later expects XML payloads to look.
+ */
 type XMLValue = string | XMLObject | XMLValue[]
 interface XMLObject {
   [key: string]: string | XMLValue
 }
 
+/**
+ * Reads characters until we hit one of the provided stop strings. Returns the
+ * collected text and the index where we stopped. Used by most token helpers.
+ */
 const _consumeUntil = (
   str: string,
   chars: string[],
@@ -58,6 +75,7 @@ const _consumeUntil = (
   throw new SyntaxError("Unexpected EOF")
 }
 
+/** Handles processing instructions such as `<?xml version="1.0"?>`. */
 const _processProcInst = (
   str: string,
   i: number,
@@ -79,6 +97,7 @@ const _processProcInst = (
   }
 }
 
+/** Reads a start tag like `<book` and returns an STAG token. */
 const _processStartTag = (
   str: string,
   i: number,
@@ -93,6 +112,7 @@ const _processStartTag = (
   return [token, i, str[i] == " "]
 }
 
+/** Reads a closing tag like `</book>` and produces an ETAG token. */
 const _processEndTag = (
   str: string,
   i: number,
@@ -108,6 +128,7 @@ const _processEndTag = (
   return [token, i, true]
 }
 
+/** Detects a `/>` sequence to mark empty elements such as `<br/>`. */
 const _processEmptyElementTag = (str: string, i: number): [Token, i: number] => {
   const nextChar = str[i + 1]
   if (nextChar == ">") {
@@ -119,6 +140,7 @@ const _processEmptyElementTag = (str: string, i: number): [Token, i: number] => 
   } else throw new SyntaxError(`Unexpected symbol ${nextChar} at ${i + 1}. Expected >`)
 }
 
+/** Handles `<!DOCTYPE ...>` declarations without diving into internals. */
 const _processDoctype = (
   str: string,
   i: number,
@@ -133,6 +155,7 @@ const _processDoctype = (
   return [token, i, true]
 }
 
+/** Extracts CDATA blocks (e.g., `<![CDATA[some text]]>`). */
 const _processCData = (
   str: string,
   i: number,
@@ -147,6 +170,7 @@ const _processCData = (
   return [token, i + 2, true]
 }
 
+/** Collects comment text between `<!--` and `-->`. */
 const _processComment = (
   str: string,
   i: number,
@@ -161,6 +185,7 @@ const _processComment = (
   return [token, i + 2, true]
 }
 
+/** Determines what kind of tag opened after a `<` symbol and routes it. */
 const _processOpenTag = (
   str: string,
   i: number,
@@ -184,6 +209,7 @@ const _processOpenTag = (
   }
 }
 
+/** Reads either an attribute name or value depending on the current context. */
 const _processAttribute = (str: string, i: number, n: number): [Token, i: number] => {
   let c = str[i]
 
@@ -203,6 +229,7 @@ const _processAttribute = (str: string, i: number, n: number): [Token, i: number
   return [token, i]
 }
 
+/** Pulls text content until the next `<` so we can store node values. */
 const _processText = (str: string, i: number, n: number): [Token, i: number] => {
   let [value, newIndex] = _consumeUntil(str, ["<"], i, n)
   i = newIndex
@@ -213,6 +240,10 @@ const _processText = (str: string, i: number, n: number): [Token, i: number] => 
   return [token, i - 1]
 }
 
+/**
+ * Converts raw XML text into a flat list of tokens. Acts like a simple
+ * state machine that understands `<`, `>`, attribute sections, and text nodes.
+ */
 const tokenize = (str: string): Token[] => {
   const tokens = [] as Token[]
   const n = str.length
@@ -257,6 +288,10 @@ const tokenize = (str: string): Token[] => {
   return tokens
 }
 
+/**
+ * Turns the Node tree into a JSON-friendly structure. Handles attributes,
+ * nested elements, and arrays of repeated children in a predictable way.
+ */
 const _constructObject = (root: Node): XMLValue => {
   // recursively construct sub nodes
   // base case for the recursive function
@@ -292,6 +327,10 @@ const _constructObject = (root: Node): XMLValue => {
   }
 }
 
+/**
+ * Orchestrates parsing by tokenizing the string and building the tree while
+ * checking tag balance. Returns an object keyed by the root element name.
+ */
 const parse = (str: string): XMLValue => {
   const tokens = tokenize(str)
   const root = {
@@ -340,12 +379,15 @@ const parse = (str: string): XMLValue => {
   return { [root.key]: _constructObject(root) }
 }
 
+/** Concrete DataFormat implementation for XML parsing. */
 const xml: DataFormat = {
+  /** Reads XML from disk, converts to StructuredData, and returns it. */
   loadFile: async function (path: PathLike | fs.FileHandle): Promise<StructuredData> {
     const text = (await fs.readFile(path)).toString()
     return xml.from(text)
   },
 
+  /** Parses XML text already in memory and wraps it in StructuredData. */
   from: function (text: string): StructuredData {
     const parsed = parse(text)
     return new StructuredData(parsed as XMLObject, "xml")

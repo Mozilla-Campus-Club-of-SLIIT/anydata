@@ -1,5 +1,7 @@
+# Workflow name shows up in the Actions tab
 name: Node.js CI
 
+# Run on pushes and PRs that target master so every change gets checked
 on:
   push:
     branches: ["master"]
@@ -7,30 +9,38 @@ on:
     branches: ["master"]
 
 jobs:
+  # Single build job that fans out across multiple Node versions
   build:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
+        # Test against all currently supported Node LTS streams
         node-version: [18.x, 20.x, 22.x]
 
     steps:
+      # Grab repository contents
       - uses: actions/checkout@v4
 
+      # Install the Node version for this matrix entry and enable npm caching
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
 
+      # Install dependencies exactly as locked in package-lock.json
       - name: Install dependencies
         run: npm ci
 
+      # Verify formatting so prettier-violating changes fail fast
       - name: Check format
         run: npm run format:check
 
+      # Run lint rules to catch static issues
       - name: Lint
         run: npm run lint
 
+      # Execute the test suite
       - name: Test
         run: npm test

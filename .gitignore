@@ -1,6 +1,12 @@
+# Installed dependencies live here; they can be recreated with npm install
 node_modules
+# Local environment secrets stay out of git
 .env
+# Runtime or diagnostic logs
 logs
+# NYC coverage temp artifacts
 .nyc_output
+# Final coverage reports
 coverage
+# Build output from bundlers (tsup, etc.)
 dist

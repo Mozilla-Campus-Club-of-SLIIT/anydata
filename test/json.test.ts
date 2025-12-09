@@ -4,6 +4,7 @@ import { json, StructuredData } from "../src/index.js"
 
 describe("json", () => {
   describe("loadFile", () => {
+    // Shared reference object reused across file tests
     const rData = {
       name: "Test",
       value: 123,
@@ -48,6 +49,7 @@ describe("json", () => {
   })
 
   describe("from", () => {
+    // Direct string parsing without touching the filesystem
     it("should create a StructuredData object with valid json", async () => {
       const rData = {
         name: "Test",
