@@ -1,19 +1,39 @@
 import { compareArrays } from "./utils/common.js"
 
+/**
+ * Shape used while working with XML. Each value can be plain text, another
+ * object, or an array of more XML values. Object keys match the tag names found
+ * in the original document.
+ */
 type XMLValue = string | XMLObject | XMLValue[]
 interface XMLObject {
   [key: string]: string | XMLValue
 }
 
+/**
+ * Common wrapper returned by every parser. Remembers which format produced the
+ * data and offers helpers to view it in a friendly JavaScript shape.
+ */
 export default class StructuredData {
   private _data: object
   originFormat: "csv" | "json" | "xml" | "yaml"
 
+  /**
+   * @param data Raw payload from the parser (JSON object, CSV rows, XML tree,
+   * etc.). Stored as-is so we do not lose information.
+   * @param originFormat Remember which parser created the payload so we know how
+   * to convert it later.
+   */
   constructor(data: object, originFormat: "csv" | "json" | "xml" | "yaml") {
     this._data = data
     this.originFormat = originFormat
   }
 
+  /**
+   * Converts the internal XML tree into easier-to-use objects and arrays. It
+   * groups repeating child items, keeps single items simple, and gives up only
+   * when the structure is too mixed to guess safely.
+   */
   private static _getXmlData = (
     element: XMLValue,
     isCollection: boolean = false,
@@ -62,6 +82,10 @@ export default class StructuredData {
     return element
   }
 
+  /**
+   * Returns the data in a convenient shape. XML gets extra processing to look
+   * like regular nested objects, while other formats are returned as stored.
+   */
   get data(): object {
     // data getter attempts to return data in a more javascript friendly way
     // the returned data will be suitable to be converted in json if required
@@ -84,34 +108,42 @@ export default class StructuredData {
     }
   }
 
+  /** Plans to convert the stored data back into CSV text. */
   toCsv(): string {
     throw new Error("Function not implemented.")
   }
 
+  /** Plans to convert the stored data back into JSON text. */
   toJson(): string {
     throw new Error("Function not implemented.")
   }
 
+  /** Plans to convert the stored data back into XML text. */
   toXml(): string {
     throw new Error("Function not implemented.")
   }
 
+  /** Plans to convert the stored data back into YAML text. */
   toYaml(): string {
     throw new Error("Function not implemented.")
   }
 
+  /** Plans to write the data to disk as CSV. */
   async exportCsv(): Promise<void> {
     throw new Error("Function not implemented")
   }
 
+  /** Plans to write the data to disk as JSON. */
   async exportJson(): Promise<void> {
     throw new Error("Function not implemented")
   }
 
+  /** Plans to write the data to disk as XML. */
   async exportXml(): Promise<void> {
     throw new Error("Function not implemented")
   }
 
+  /** Plans to write the data to disk as YAML. */
   async exportYaml(): Promise<void> {
     throw new Error("Function not implemented")
   }

@@ -2,6 +2,12 @@ import { promises as fs, PathLike } from "fs"
 import DataFormat, { Options } from "./types/DataFormat"
 import StructuredData from "./StructuredData.js"
 
+/**
+ * Stateful CSV tokenizer loosely inspired by RFC4180 semantics. Handles
+ * comma-delimited fields, optional double-quoted segments (with doubled quotes
+ * as escaping), and both LF / CRLF line endings. Produces a 2D array of raw
+ * field strings without applying type inference.
+ */
 const parse = (text: string): string[][] => {
   // Simple RFC4180-like CSV parser
   // - Fields separated by commas
@@ -103,6 +109,10 @@ const finalize = (rows: string[][], header: boolean): StructuredData => {
 }
 
 const csv: DataFormat = {
+  /**
+   * Reads CSV input from disk, applies header handling, and wraps the resulting
+   * 2D array or object list in StructuredData. Defers to `from` after loading.
+   */
   loadFile: async function (
     path: PathLike | fs.FileHandle,
     { header }: Options = { header: false },
@@ -111,6 +121,11 @@ const csv: DataFormat = {
     return csv.from(text, { header })
   },
 
+  /**
+   * Parses CSV text already held in memory. When `header` is true, returns an
+   * array of row objects keyed by header names (falling back to `field{idx}` for
+   * missing names). Otherwise returns a simple matrix of field values.
+   */
   from: function (text: string, { header }: Options = { header: false }): StructuredData {
     header = !!header
     const parsed = parse(text)

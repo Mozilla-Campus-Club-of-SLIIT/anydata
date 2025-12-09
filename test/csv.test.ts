@@ -4,6 +4,7 @@ import { csv, StructuredData } from "../src/index.js"
 
 describe("csv", () => {
   describe("loadFile", () => {
+    // Sample fixtures cover headers/no headers and quoted edge cases
     const simpleNoHeaderCsv = `Alice,30,Paris
 Bob,25,London`
 
@@ -19,6 +20,7 @@ Bob,25,London`
 2,"A ""quoted"" word"`
 
     before(async () => {
+      // Write temporary CSV files the loader can read
       await fs.writeFile("test.csv", simpleHeaderCsv)
       await fs.writeFile("quoted.csv", quotedHeaderCsv)
       await fs.writeFile("noheader.csv", simpleNoHeaderCsv)
@@ -28,6 +30,7 @@ Bob,25,London`
     })
 
     after(async () => {
+      // Clean up the temp files after the suite
       await fs.unlink("test.csv")
       await fs.unlink("quoted.csv")
       await fs.unlink("invalid.csv")
@@ -84,6 +87,7 @@ Bob,25,London`
   })
 
   describe("from", () => {
+    // Pure string parsing tests to cover option combos
     it("should create a StructuredData object when header option is ignored", () => {
       const text = "Alice,30,Paris\nBob,25,London"
       const data1 = csv.from(text)
