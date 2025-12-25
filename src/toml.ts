@@ -10,6 +10,10 @@ const toml: DataFormat = {
   },
 
   from: function (text: string): StructuredData {
+    // Validate that input is not empty or whitespace-only
+    if (!text || text.trim().length === 0) {
+      throw new Error("Cannot parse empty or whitespace-only input")
+    }
     const parser = new TomlParser(text)
     return new StructuredData(parser.parse(), "toml")
   },
@@ -158,16 +162,16 @@ class TomlParser {
       }
 
       // Resolve table path
-      let current: any = this.root
+      let current: TomlValue = this.root
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i]
         const isLast = i === keys.length - 1
 
         if (isLast) {
-          if (!(key in current)) {
-            current[key] = []
+          if (!(key in (current as TomlTable))) {
+            ;(current as TomlTable)[key] = []
           }
-          if (!Array.isArray(current[key])) {
+          if (!Array.isArray((current as TomlTable)[key])) {
             throw new TomlError(
               `Key '${key}' is already defined as a non-array`,
               this.line,
@@ -175,14 +179,14 @@ class TomlParser {
             )
           }
           const newTable: TomlTable = {}
-          current[key].push(newTable)
+          ;((current as TomlTable)[key] as TomlValue[]).push(newTable)
           this.currentTable = newTable
         } else {
-          if (key in current) {
-            const val = current[key]
+          if (key in (current as TomlTable)) {
+            const val: TomlValue = (current as TomlTable)[key]
             if (Array.isArray(val)) {
               // If it's an array, we must be extending the last element of the array
-              const lastItem = val[val.length - 1]
+              const lastItem: TomlValue = val[val.length - 1]
               if (!lastItem) {
                 throw new TomlError("Cannot extend empty array", this.line, this.col)
               }
@@ -199,7 +203,7 @@ class TomlParser {
           } else {
             // Implicitly create table
             const newTable: TomlTable = {}
-            current[key] = newTable
+            ;(current as TomlTable)[key] = newTable
             current = newTable
           }
         }
@@ -226,13 +230,13 @@ class TomlParser {
     }
 
     // Resolve table path
-    let current: any = this.root
+    let current: TomlValue = this.root
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
       const isLast = i === keys.length - 1
 
-      if (key in current) {
-        const val = current[key]
+      if (key in (current as TomlTable)) {
+        const val: TomlValue = (current as TomlTable)[key]
 
         // Handle arrays - navigate to the last element
         if (Array.isArray(val)) {
@@ -243,7 +247,7 @@ class TomlParser {
               this.col,
             )
           }
-          const lastElement = val[val.length - 1]
+          const lastElement: TomlValue = val[val.length - 1]
           if (typeof lastElement !== "object" || lastElement === null) {
             throw new TomlError(
               `Cannot create subtable: array '${key}' contains non-table values`,
@@ -256,7 +260,7 @@ class TomlParser {
           typeof val !== "object" ||
           val === null ||
           val instanceof Date ||
-          (val as any)[INLINE_TABLE]
+          (val as Record<string | symbol, unknown>)[INLINE_TABLE]
         ) {
           // Check if collision with non-table or inline table
           throw new TomlError(
@@ -282,7 +286,7 @@ class TomlParser {
         }
       } else {
         const newTable: TomlTable = {}
-        current[key] = newTable
+        ;(current as TomlTable)[key] = newTable
 
         if (isLast) {
           this.explicitlyDefinedTables.add(newTable)
@@ -319,32 +323,32 @@ class TomlParser {
     const value = this.parseValue()
 
     // Assign to current table with dot traversal
-    let current: any = this.currentTable
+    let current: TomlValue = this.currentTable
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
       const isLast = i === keys.length - 1
 
       if (isLast) {
-        if (key in current) {
-          throw new TomlError(`Key '${keys.join(".")}' is already defined`, this.line, this.col)
+        // Assign value
+        if (key in (current as TomlTable)) {
+          throw new TomlError(`Duplicate key '${key}'`, this.line, this.col)
         }
-        current[key] = value
+        ;(current as TomlTable)[key] = value
       } else {
-        if (!(key in current)) {
-          current[key] = {}
+        if (!(key in (current as TomlTable))) {
+          ;(current as TomlTable)[key] = {}
         }
-        // Check if we are traversing into a non-table
-        const val = current[key]
+        const val: TomlValue = (current as TomlTable)[key]
         if (
           typeof val !== "object" ||
           val === null ||
           Array.isArray(val) ||
-          (val as any)[INLINE_TABLE]
+          (val as Record<string | symbol, unknown>)[INLINE_TABLE]
         ) {
           // Implicitly created tables must not conflict with inline tables or values
           // Note: If 'val' was an explicitly defined table, it's fine.
           // If it was an inline table, we cannot extend it.
-          if ((val as any)[INLINE_TABLE]) {
+          if ((val as Record<string | symbol, unknown>)[INLINE_TABLE]) {
             throw new TomlError(`Cannot extend inline table at '${key}'`, this.line, this.col)
           }
           if (typeof val !== "object") {
@@ -370,6 +374,7 @@ class TomlParser {
   private parseKey(): string {
     // Simple bare key or quoted key
     const char = this.peek()
+    // eslint-disable-next-line quotes
     if (char === '"' || char === "'") {
       return this.parseString(false)
     } else {
@@ -392,6 +397,7 @@ class TomlParser {
 
   private parseValue(): TomlValue {
     const char = this.peek()
+    // eslint-disable-next-line quotes
     if (char === '"' || char === "'") {
       return this.parseString(true)
     } else if (char === "t" || char === "f") {
@@ -503,6 +509,7 @@ class TomlParser {
 
         const char = this.peek()
 
+        // eslint-disable-next-line quotes
         if (startChar === '"' && char === "\\") {
           // Basic multi-line string escape handling
 
@@ -556,6 +563,7 @@ class TomlParser {
         throw new TomlError("Unterminated string (newlines not allowed)", this.line, this.col)
       }
 
+      // eslint-disable-next-line quotes
       if (char === "\\" && delimiter === '"') {
         this.advance()
 
@@ -576,7 +584,9 @@ class TomlParser {
     this.advance()
 
     switch (escape) {
+      // eslint-disable-next-line quotes
       case '"':
+        // eslint-disable-next-line quotes
         return '"'
 
       case "\\":
@@ -809,20 +819,20 @@ class TomlParser {
       const value = this.parseValue()
 
       // Assign value using dotted key path
-      let current: any = table
+      let current: TomlValue = table
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i]
         const isLast = i === keys.length - 1
 
         if (isLast) {
-          current[key] = value
+          ;(current as TomlTable)[key] = value
         } else {
-          if (!(key in current)) {
+          if (!(key in (current as TomlTable))) {
             const nestedTable = {}
             Object.defineProperty(nestedTable, INLINE_TABLE, { value: true })
-            current[key] = nestedTable
+            ;(current as TomlTable)[key] = nestedTable
           }
-          current = current[key]
+          current = (current as TomlTable)[key]
         }
       }
 
