@@ -18,7 +18,7 @@ export const detectFormat = (text: string): "json" | "xml" | "csv" | "yaml" | "t
     return "csv"
   }
   // Check for TOML - typical TOML patterns (table headers [section], key = value)
-  else if (/^\s*\[[^\]]+\]/m.test(text) || /^[a-zA-Z0-9_-]+\s*=\s*.+/m.test(text)) {
+  else if (/^\s*\[[^\]]+\]/m.test(text) || /^[a-zA-Z0-9_-]+ *= *[^\r\n]+/m.test(text)) {
     return "toml"
   }
   // Check for YAML - typical YAML patterns
