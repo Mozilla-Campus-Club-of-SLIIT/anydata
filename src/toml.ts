@@ -351,7 +351,7 @@ class TomlParser {
 
   private parseArray = (): TomlValue[] => {
     const arr: TomlValue[] = []
-    this.advance() // [
+    this.advance()
     while (this.idx < this.input.length) {
       this.skipIgnored()
       if (this.peek() === "]") {
@@ -377,7 +377,7 @@ class TomlParser {
   private parseInlineTable = (): TomlTable => {
     const t: TomlTable = {}
     Object.defineProperty(t, INLINE_TABLE, { value: true })
-    this.advance() // {
+    this.advance()
     while (this.idx < this.input.length) {
       this.skipIgnored()
       if (this.peek() === "}") {
