@@ -183,10 +183,8 @@ export default class StructuredData {
    * ```
    */
   toYaml(): string {
-    if (this.originFormat !== "yaml") {
-      throw new Error("Cannot convert to YAML: data was not originally in YAML format")
-    }
-    return this.serializeToYaml(this._data as YAMLObject)
+    if (this.originFormat == "yaml") return this.serializeToYaml(this._data as YAMLObject)
+    throw new Error("Operation not supported")
   }
 
   /**

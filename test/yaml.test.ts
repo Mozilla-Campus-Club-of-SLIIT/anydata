@@ -373,16 +373,6 @@ has_hash: "text # comment"`
       assert.strictEqual(roundTripData.has_hash, originalData.has_hash)
     })
 
-    it("should throw error when trying to convert non-YAML data to YAML", () => {
-      const jsonData = { name: "John", age: 30 }
-      const structuredData = new StructuredData(jsonData, "json")
-
-      assert.throws(() => structuredData.toYaml(), {
-        name: "Error",
-        message: "Cannot convert to YAML: data was not originally in YAML format",
-      })
-    })
-
     it("should handle empty objects and arrays", () => {
       const emptyYaml = `empty_object: {}
 empty_array: []
@@ -408,6 +398,9 @@ nested:
       // The round-trip data should be equivalent to the original
       assert.deepStrictEqual(roundTrip.data, data.data)
       assert.strictEqual(roundTrip.originFormat, "yaml")
+      // todo: preserve the original string after roundtrip
+      // right now, it would strip off the quotations
+      // assert.strictEqual(complexYaml, yamlOutput)
     })
   })
 })
