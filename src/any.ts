@@ -19,12 +19,12 @@ const any = {
             return json.from(text)
           case "xml":
             return xml.from(text)
-          case "csv":
-            return csv.from(text)
           case "yaml":
             return yaml.from(text)
           case "toml":
             return toml.from(text)
+          case "csv":
+            return csv.from(text)
         }
       } catch {}
     }
