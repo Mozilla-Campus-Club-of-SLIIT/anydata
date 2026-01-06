@@ -2,7 +2,7 @@ import StructuredData from "./StructuredData.js"
 import { PathLike } from "fs"
 import { FileHandle } from "fs/promises"
 import { detectFormat } from "./utils/detectFormat.js"
-import { csv, json, xml, yaml } from "./index.js"
+import { csv, json, toml, xml, yaml } from "./index.js"
 import fs from "fs"
 
 const any = {
@@ -19,10 +19,12 @@ const any = {
             return json.from(text)
           case "xml":
             return xml.from(text)
-          case "csv":
-            return csv.from(text)
           case "yaml":
             return yaml.from(text)
+          case "toml":
+            return toml.from(text)
+          case "csv":
+            return csv.from(text)
         }
       } catch {}
     }
@@ -58,6 +60,14 @@ const any = {
         return yaml.from(text)
       } catch (e) {
         errors.yaml = (e as Error).message
+      }
+    }
+
+    if (predictedFormat != "toml") {
+      try {
+        return toml.from(text)
+      } catch (e) {
+        errors.toml = (e as Error).message
       }
     }
 

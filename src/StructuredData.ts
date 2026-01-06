@@ -9,10 +9,9 @@ interface XMLObject {
 
 export default class StructuredData {
   private _data: object
+  originFormat: "csv" | "json" | "xml" | "yaml" | "toml"
 
-  originFormat: "csv" | "json" | "xml" | "yaml"
-
-  constructor(data: object, originFormat: "csv" | "json" | "xml" | "yaml") {
+  constructor(data: object, originFormat: "csv" | "json" | "xml" | "yaml" | "toml") {
     this._data = data
     this.originFormat = originFormat
   }
@@ -113,6 +112,8 @@ export default class StructuredData {
       case "yaml":
         return StructuredData._getYamlData(this._data as YAMLObject)
       case "json":
+        return this._data
+      case "toml":
         return this._data
       default:
         throw new TypeError("Unknown format")

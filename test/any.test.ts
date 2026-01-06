@@ -41,6 +41,13 @@ describe("parse", () => {
       assert.deepStrictEqual(result!.data, { person: { name: "John", age: "30" } })
     })
 
+    it("should detect and parse TOML data from string", () => {
+      const tomlData = 'name = "John"\nage = 30'
+      const result = any.from(tomlData)
+
+      assert.deepStrictEqual(result!.data, { name: "John", age: 30 })
+    })
+
     /*it("should throw an error for unparseable data", () => {
       const invalidData = "This is not valid in any supported format"
       assert.throws(() => any.from(invalidData), Error)
@@ -74,6 +81,17 @@ describe("parse", () => {
       const result = await any.loadFile(filePath)
 
       assert.deepStrictEqual(result!.data, { person: { name: "John", age: "30" } })
+    })
+
+    it("should detect and parse TOML data from file", async () => {
+      const filePath = path.join(tempDir, "test.toml")
+      const tomlData = 'name = "John"\nage = 30'
+
+      fs.writeFileSync(filePath, tomlData)
+
+      const result = await any.loadFile(filePath)
+
+      assert.deepStrictEqual(result!.data, { name: "John", age: 30 })
     })
 
     it("should detect format regardless of file extension", async () => {
