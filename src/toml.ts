@@ -213,6 +213,7 @@ class TomlParser {
    */
   private parseKey(): string {
     const firstChar = this.peek()
+    // prettier-ignore
     const isQuoted = firstChar === "\"" || firstChar === "'"
 
     if (isQuoted) {
@@ -491,6 +492,7 @@ class TomlParser {
     const firstChar = this.peek()
 
     // String (quoted)
+    // prettier-ignore
     const isQuote = firstChar === "\"" || firstChar === "'"
     if (isQuote) {
       return this.parseString(true)
@@ -821,6 +823,7 @@ class TomlParser {
       }
 
       // Handle escape sequences in basic strings (double quotes)
+      // prettier-ignore
       const isBasicString = quoteChar === "\""
       const isEscape = currentChar === "\\"
 
@@ -895,6 +898,7 @@ class TomlParser {
     this.advance()
 
     // Common single-character escapes
+    // prettier-ignore
     const escapeMap: Record<string, string> = {
       b: "\b",
       f: "\f",
