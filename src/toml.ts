@@ -9,9 +9,12 @@ const toml: DataFormat = {
   },
 
   from: (text: string): StructuredData => {
-    if (!text || text.trim().length === 0)
+    if (!text || text.trim().length === 0) {
       throw new Error("Cannot parse empty or whitespace-only input")
-    return new StructuredData(new TomlParser(text).parse(), "toml")
+    }
+    const parser = new TomlParser(text)
+    const parsedData = parser.parse()
+    return new StructuredData(parsedData, "toml")
   },
 }
 
@@ -23,400 +26,1092 @@ class TomlError extends Error {
 }
 
 type TomlValue = string | number | boolean | TomlTable | TomlValue[] | Date
+
 interface TomlTable {
   [key: string]: TomlValue
 }
+
+// Symbol used to mark inline tables (cannot be extended after definition)
 const INLINE_TABLE = Symbol("InlineTable")
 
 class TomlParser {
-  private idx = 0
-  private line = 1
-  private col = 1
-  private root: TomlTable = {}
+  private idx: number
+  private line: number
+  private col: number
+  private input: string
+  private root: TomlTable
   private currentTable: TomlTable
-  private definedTables = new Set<TomlTable>()
+  private definedTables: Set<TomlTable>
+  // Stores references to arrays created via [[array]] syntax to differentiate from static arrays
+  private arrayOfTables: Set<TomlValue[]>
 
-  constructor(private input: string) {
+  constructor(input: string) {
+    this.input = input
+    this.idx = 0
+    this.line = 1
+    this.col = 1
+    this.root = {}
     this.currentTable = this.root
+    this.definedTables = new Set<TomlTable>()
     this.definedTables.add(this.root)
+    this.arrayOfTables = new Set<TomlValue[]>()
   }
 
-  parse = (): TomlTable => {
-    while (this.idx < this.input.length) {
+  /**
+   * Main parsing entry point. Processes the entire TOML document.
+   * Returns the root table containing all parsed data.
+   */
+  parse(): TomlTable {
+    const inputLength = this.input.length
+
+    while (this.idx < inputLength) {
       this.skipIgnored()
-      if (this.idx >= this.input.length) break
-      if (this.peek() === "[") this.parseTableDecl()
-      else this.parsePair()
+
+      if (this.idx >= inputLength) {
+        break
+      }
+
+      const currentChar = this.peek()
+      if (currentChar === "[") {
+        this.parseTableDecl()
+      } else {
+        this.parsePair()
+      }
     }
+
     return this.root
   }
 
-  private peek = (n = 0): string => this.input[this.idx + n] || ""
-  private advance = (n = 1) => {
-    for (let i = 0; i < n && this.idx < this.input.length; i++) {
-      if (this.input[this.idx++] === "\n") {
-        this.line++
-        this.col = 1
-      } else this.col++
+  /**
+   * Peeks at a character in the input without consuming it.
+   * Returns empty string if position is out of bounds.
+   */
+  private peek(offset: number = 0): string {
+    const position = this.idx + offset
+    if (position < this.input.length) {
+      return this.input[position]
     }
-  }
-  private err = (msg: string) => {
-    throw new TomlError(msg, this.line, this.col)
-  }
-  private match = (s: string) => this.input.startsWith(s, this.idx)
-
-  private skipSpaces = () => {
-    while (/[ \t]/.test(this.peek())) this.advance()
-  }
-  private skipIgnored = () => {
-    while (this.idx < this.input.length) {
-      const c = this.peek()
-      if (/[ \t\r\n]/.test(c)) this.advance()
-      else if (c === "#")
-        while (this.idx < this.input.length && !/[\r\n]/.test(this.peek())) this.advance()
-      else break
-    }
-  }
-
-  private parseKeys = (): string[] => {
-    const keys: string[] = []
-    while (this.idx < this.input.length) {
-      this.skipSpaces()
-      keys.push(this.parseKey())
-      this.skipSpaces()
-      if (this.peek() === ".") {
-        this.advance()
-        continue
-      }
-      break
-    }
-    return keys
-  }
-
-  private parseKey = (): string => {
-    const c = this.peek()
-    // eslint-disable-next-line quotes
-    if (c === '"' || c === "'") return this.parseString(false)
-    let key = ""
-    while (/[A-Za-z0-9_\-]/.test(this.peek())) {
-      key += this.peek()
-      this.advance()
-    }
-    if (!key) this.err("Expected key")
-    return key
-  }
-
-  private parseTableDecl = () => {
-    this.advance()
-    const isArr = this.peek() === "["
-    if (isArr) this.advance()
-    const keys = this.parseKeys()
-    if (this.peek() !== "]") this.err("Expected ']'")
-    this.advance()
-    if (isArr) {
-      if (this.peek() !== "]") this.err("Expected ']]'")
-      this.advance()
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cur: any = this.root
-    keys.forEach((key, i) => {
-      const isLast = i === keys.length - 1
-      if (isLast) {
-        if (isArr) {
-          if (!cur[key]) cur[key] = []
-          if (!Array.isArray(cur[key])) this.err(`Key '${key}' is non-array`)
-          const newT = {}
-          cur[key].push(newT)
-          this.currentTable = newT
-        } else {
-          if (cur[key]) {
-            if (this.definedTables.has(cur[key])) this.err(`Table '${keys.join(".")}' redefined`)
-            if (!this.isTable(cur[key])) this.err(`Key '${key}' is value`)
-            this.currentTable = cur[key]
-          } else {
-            cur[key] = {}
-            this.currentTable = cur[key]
-          }
-          this.definedTables.add(this.currentTable)
-        }
-      } else {
-        if (!cur[key]) cur[key] = {}
-        else if (!Array.isArray(cur[key]) && !this.isTable(cur[key]))
-          this.err(`Key '${key}' not a table`)
-        if (Array.isArray(cur[key])) cur = cur[key][cur[key].length - 1]
-        else cur = cur[key]
-      }
-    })
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private isTable = (v: any) =>
-    typeof v === "object" &&
-    v !== null &&
-    !Array.isArray(v) &&
-    !(v instanceof Date) &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    !(v as any)[INLINE_TABLE]
-
-  private parsePair = () => {
-    const keys = this.parseKeys()
-    if (this.peek() !== "=") this.err("Expected '='")
-    this.advance()
-    this.skipSpaces()
-    const val = this.parseValue()
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cur: any = this.currentTable
-    keys.forEach((key, i) => {
-      if (i === keys.length - 1) {
-        if (key in cur) this.err(`Duplicate key '${key}'`)
-        cur[key] = val
-      } else {
-        if (!cur[key]) cur[key] = {}
-        else if (!this.isTable(cur[key])) {
-          if (cur[key][INLINE_TABLE]) this.err(`Cannot extend inline table '${key}'`)
-          this.err(`Key '${key}' is value`)
-        }
-        cur = cur[key]
-      }
-    })
-    this.skipSpaces()
-    if (this.idx < this.input.length && this.peek() !== "#" && !/[\r\n]/.test(this.peek()))
-      this.err("Expected newline/EOF")
-  }
-
-  private parseValue = (): TomlValue => {
-    const c = this.peek()
-    // eslint-disable-next-line quotes
-    if (c === '"' || c === "'") return this.parseString(true)
-    if (c === "t" || c === "f") return this.parseBool()
-    if (c === "[") return this.parseArray()
-    if (c === "{") return this.parseInlineTable()
-    if (/[0-9]/.test(c)) {
-      if (this.peek(4) === "-" && this.peek(7) === "-") return this.parseDate()
-      if (this.peek(2) === ":") return this.parseTime()
-    }
-    if (/[0-9+\-in]/.test(c)) return this.parseNumber()
-    this.err(`Unexpected '${c}'`)
     return ""
   }
 
-  private parseDate = (): Date => {
-    let s = ""
-    while (/[0-9TZ.:\-+ \t]/.test(this.peek())) {
-      s += this.peek()
-      this.advance()
+  /**
+   * Advances the parser position by n characters, tracking line and column numbers.
+   */
+  private advance(count: number = 1): void {
+    const maxCount = 100000 // Safety limit for advance operations
+    if (count > maxCount) {
+      this.err("Internal error: advance count exceeds safety limit")
     }
-    const d = new Date(s.replace(" ", "T"))
-    if (isNaN(d.getTime())) this.err("Invalid date")
-    return d
-  }
-  private parseTime = (): string => {
-    let s = ""
-    while (/[0-9:.]/.test(this.peek())) {
-      s += this.peek()
-      this.advance()
+
+    let i = 0
+    while (i < count && this.idx < this.input.length) {
+      const currentChar = this.input[this.idx]
+      this.idx = this.idx + 1
+
+      if (currentChar === "\n") {
+        this.line = this.line + 1
+        this.col = 1
+      } else {
+        this.col = this.col + 1
+      }
+
+      i = i + 1
     }
-    return s
   }
 
-  private parseBool = (): boolean => {
+  /**
+   * Throws a TomlError with current line and column information.
+   */
+  private err(msg: string): never {
+    throw new TomlError(msg, this.line, this.col)
+  }
+
+  /**
+   * Checks if the input at current position starts with the given string.
+   */
+  private match(searchString: string): boolean {
+    return this.input.startsWith(searchString, this.idx)
+  }
+
+  /**
+   * Skips horizontal whitespace (spaces and tabs only).
+   */
+  private skipSpaces(): void {
+    while (this.idx < this.input.length) {
+      const currentChar = this.peek()
+      const isSpace = currentChar === " " || currentChar === "\t"
+
+      if (isSpace) {
+        this.advance()
+      } else {
+        break
+      }
+    }
+  }
+
+  /**
+   * Skips all ignorable content: whitespace and comments.
+   * Comments start with # and continue to end of line.
+   */
+  private skipIgnored(): void {
+    while (this.idx < this.input.length) {
+      const currentChar = this.peek()
+      const isWhitespace = /[ \t\r\n]/.test(currentChar)
+
+      if (isWhitespace) {
+        this.advance()
+      } else if (currentChar === "#") {
+        // Skip comment until end of line
+        while (this.idx < this.input.length) {
+          const commentChar = this.peek()
+          const isNewline = /[\r\n]/.test(commentChar)
+          if (isNewline) {
+            break
+          }
+          this.advance()
+        }
+      } else {
+        break
+      }
+    }
+  }
+
+  /**
+   * Parses a sequence of keys separated by dots.
+   * Example: "a.b.c" returns ["a", "b", "c"]
+   */
+  private parseKeys(): string[] {
+    const keys: string[] = []
+    const maxKeys = 1000 // Safety limit for nested keys
+
+    while (this.idx < this.input.length && keys.length < maxKeys) {
+      this.skipSpaces()
+      const key = this.parseKey()
+      keys.push(key)
+      this.skipSpaces()
+
+      const nextChar = this.peek()
+      if (nextChar === ".") {
+        this.advance()
+        continue
+      }
+
+      break
+    }
+
+    if (keys.length >= maxKeys) {
+      this.err("Too many nested keys")
+    }
+
+    return keys
+  }
+
+  /**
+   * Parses a single key, which can be:
+   * - Bare: alphanumeric, underscore, hyphen
+   * - Quoted: single or double quotes
+   */
+  private parseKey(): string {
+    const firstChar = this.peek()
+    const isQuoted = firstChar === "\"" || firstChar === "'"
+
+    if (isQuoted) {
+      return this.parseString(false)
+    }
+
+    // Parse bare key
+    let key = ""
+    const maxKeyLength = 10000 // Safety limit for key length
+
+    while (key.length < maxKeyLength) {
+      const currentChar = this.peek()
+      const isBareKeyChar = /[A-Za-z0-9_\-]/.test(currentChar)
+
+      if (isBareKeyChar) {
+        key = key + currentChar
+        this.advance()
+      } else {
+        break
+      }
+    }
+
+    if (key.length === 0) {
+      this.err("Expected key")
+    }
+
+    if (key.length >= maxKeyLength) {
+      this.err("Key too long")
+    }
+
+    return key
+  }
+
+  /**
+   * Parses a table or array-of-tables declaration.
+   * [table] is a standard table
+   * [[array]] is an array of tables
+   */
+  private parseTableDecl(): void {
+    this.advance() // Skip opening '['
+
+    const isArrayOfTables = this.peek() === "["
+    if (isArrayOfTables) {
+      this.advance() // Skip second '['
+    }
+
+    const keys = this.parseKeys()
+
+    // Expect closing bracket(s)
+    if (this.peek() !== "]") {
+      this.err("Expected ']'")
+    }
+    this.advance()
+
+    if (isArrayOfTables) {
+      if (this.peek() !== "]") {
+        this.err("Expected ']]'")
+      }
+      this.advance()
+    }
+
+    // Navigate to the table location
+    let current: TomlTable = this.root
+    const keyCount = keys.length
+
+    let i = 0
+    while (i < keyCount) {
+      const key = keys[i]
+      const isLastKey = i === keyCount - 1
+
+      if (isLastKey) {
+        if (isArrayOfTables) {
+          this.handleArrayOfTablesDeclaration(current, key, keys)
+        } else {
+          this.handleTableDeclaration(current, key, keys)
+        }
+      } else {
+        // Navigate through intermediate keys
+        current = this.navigateToIntermediateKey(current, key)
+      }
+
+      i = i + 1
+    }
+  }
+
+  /**
+   * Handles declaration of an array-of-tables ([[array]]).
+   */
+  private handleArrayOfTablesDeclaration(
+    current: TomlTable,
+    key: string,
+    fullKeyPath: string[],
+  ): void {
+    // Initialize array if it doesn't exist
+    if (!current[key]) {
+      current[key] = []
+      this.arrayOfTables.add(current[key] as TomlValue[])
+    }
+
+    // Verify it's an array
+    const value = current[key]
+    if (!Array.isArray(value)) {
+      this.err(`Key '${key}' is non-array`)
+    }
+
+    // Verify the array was created via [[array]] syntax
+    if (!this.arrayOfTables.has(value as TomlValue[])) {
+      const fullPath = fullKeyPath.join(".")
+      this.err(`Cannot append to statically defined array '${fullPath}'`)
+    }
+
+    // Create new table and append to array
+    const newTable = {}
+    ;(value as TomlValue[]).push(newTable)
+    this.currentTable = newTable
+  }
+
+  /**
+   * Handles declaration of a standard table ([table]).
+   */
+  private handleTableDeclaration(current: TomlTable, key: string, fullKeyPath: string[]): void {
+    if (current[key]) {
+      // Table already exists - check if we can use it
+      const existingValue = current[key]
+
+      if (this.isTable(existingValue)) {
+        if (this.definedTables.has(existingValue)) {
+          const fullPath = fullKeyPath.join(".")
+          this.err(`Table '${fullPath}' redefined`)
+        }
+        this.currentTable = existingValue
+      } else {
+        this.err(`Key '${key}' is value`)
+      }
+    } else {
+      // Create new table
+      const newTable: TomlTable = {}
+      current[key] = newTable
+      this.currentTable = newTable
+    }
+
+    this.definedTables.add(this.currentTable)
+  }
+
+  /**
+   * Navigates to an intermediate key in a dotted key path.
+   * Creates tables as needed.
+   */
+  private navigateToIntermediateKey(current: TomlTable, key: string): TomlTable {
+    if (!current[key]) {
+      const newTable = {}
+      current[key] = newTable
+      return newTable
+    }
+
+    const existingValue = current[key]
+
+    if (Array.isArray(existingValue)) {
+      // Navigate into last element of array
+      const lastIndex = existingValue.length - 1
+      if (lastIndex < 0) {
+        this.err(`Cannot navigate into empty array '${key}'`)
+      }
+      const lastElement = existingValue[lastIndex]
+
+      if (this.isTable(lastElement)) {
+        return lastElement
+      }
+      this.err(`Key '${key}' is not a table`)
+    }
+
+    if (!this.isTable(existingValue)) {
+      this.err(`Key '${key}' not a table`)
+    }
+
+    return existingValue
+  }
+
+  /**
+   * Checks if a value is a table (plain object, not array or Date or inline table).
+   */
+  private isTable(value: unknown): value is TomlTable {
+    if (typeof value !== "object" || value === null) {
+      return false
+    }
+
+    if (Array.isArray(value)) {
+      return false
+    }
+
+    if (value instanceof Date) {
+      return false
+    }
+
+    const hasInlineTableMarker = (value as Record<string | symbol, unknown>)[INLINE_TABLE]
+    if (hasInlineTableMarker) {
+      return false
+    }
+
+    return true
+  }
+
+  /**
+   * Parses a key-value pair (key = value).
+   */
+  private parsePair(): void {
+    const keys = this.parseKeys()
+
+    if (this.peek() !== "=") {
+      this.err("Expected '='")
+    }
+    this.advance()
+
+    this.skipSpaces()
+    const value = this.parseValue()
+
+    // Navigate through keys and assign value
+    let current: TomlTable = this.currentTable
+    const keyCount = keys.length
+
+    let i = 0
+    while (i < keyCount) {
+      const key = keys[i]
+      const isLastKey = i === keyCount - 1
+
+      if (isLastKey) {
+        // Check for duplicate key
+        const keyExists = key in current
+        if (keyExists) {
+          this.err(`Duplicate key '${key}'`)
+        }
+        current[key] = value
+      } else {
+        // Navigate or create intermediate tables
+        const existing = current[key]
+
+        if (!existing) {
+          const newTable: TomlTable = {}
+          current[key] = newTable
+          current = newTable
+        } else if (this.isTable(existing)) {
+          current = existing
+        } else {
+          if (
+            typeof existing === "object" &&
+            existing !== null &&
+            (existing as unknown as Record<string | symbol, unknown>)[INLINE_TABLE]
+          ) {
+            this.err(`Cannot extend inline table '${key}'`)
+          }
+          this.err(`Key '${key}' is value`)
+        }
+      }
+
+      i = i + 1
+    }
+
+    // After a key-value pair, expect newline or EOF
+    this.skipSpaces()
+    const atEnd = this.idx >= this.input.length
+    if (!atEnd) {
+      const nextChar = this.peek()
+      const isComment = nextChar === "#"
+      const isNewline = /[\r\n]/.test(nextChar)
+
+      if (!isComment && !isNewline) {
+        this.err("Expected newline/EOF")
+      }
+    }
+  }
+
+  /**
+   * Parses any TOML value based on the first character.
+   */
+  private parseValue(): TomlValue {
+    const firstChar = this.peek()
+
+    // String (quoted)
+    const isQuote = firstChar === "\"" || firstChar === "'"
+    if (isQuote) {
+      return this.parseString(true)
+    }
+
+    // Boolean
+    const isBoolStart = firstChar === "t" || firstChar === "f"
+    if (isBoolStart) {
+      return this.parseBool()
+    }
+
+    // Array
+    if (firstChar === "[") {
+      return this.parseArray()
+    }
+
+    // Inline table
+    if (firstChar === "{") {
+      return this.parseInlineTable()
+    }
+
+    // Date or time
+    const isDigit = /[0-9]/.test(firstChar)
+    if (isDigit) {
+      // Check for date pattern (YYYY-MM-DD)
+      const fourthChar = this.peek(4)
+      const seventhChar = this.peek(7)
+      const isDatePattern = fourthChar === "-" && seventhChar === "-"
+      if (isDatePattern) {
+        return this.parseDate()
+      }
+
+      // Check for time pattern (HH:MM)
+      const secondChar = this.peek(2)
+      const isTimePattern = secondChar === ":"
+      if (isTimePattern) {
+        return this.parseTime()
+      }
+    }
+
+    // Number (including signed, infinity, nan)
+    const isNumberStart = /[0-9+\-in]/.test(firstChar)
+    if (isNumberStart) {
+      return this.parseNumber()
+    }
+
+    this.err(`Unexpected '${firstChar}'`)
+    return ""
+  }
+
+  /**
+   * Parses a date or datetime value.
+   */
+  private parseDate(): Date {
+    let dateString = ""
+    const maxDateLength = 100 // Safety limit
+
+    while (dateString.length < maxDateLength) {
+      const currentChar = this.peek()
+      const isDateChar = /[0-9TZ.:\-+ \t]/.test(currentChar)
+
+      if (isDateChar) {
+        dateString = dateString + currentChar
+        this.advance()
+      } else {
+        break
+      }
+    }
+
+    const trimmed = dateString.trim()
+
+    // Check for local date format (YYYY-MM-DD only)
+    const isLocalDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    if (isLocalDateOnly) {
+      const isoString = trimmed + "T00:00:00Z"
+      const date = new Date(isoString)
+      if (isNaN(date.getTime())) {
+        this.err("Invalid date")
+      }
+      return date
+    }
+
+    // Replace space with T for ISO format compatibility
+    const normalized = dateString.replace(" ", "T")
+    const date = new Date(normalized)
+
+    if (isNaN(date.getTime())) {
+      this.err("Invalid date")
+    }
+
+    return date
+  }
+
+  /**
+   * Parses a local time value (HH:MM:SS or HH:MM:SS.fraction).
+   */
+  private parseTime(): Date {
+    let timeString = ""
+    const maxTimeLength = 100 // Safety limit
+
+    while (timeString.length < maxTimeLength) {
+      const currentChar = this.peek()
+      const isTimeChar = /[0-9:.]/.test(currentChar)
+
+      if (isTimeChar) {
+        timeString = timeString + currentChar
+        this.advance()
+      } else {
+        break
+      }
+    }
+
+    // Use reference date (1970-01-01) for local time
+    const isoString = "1970-01-01T" + timeString + "Z"
+    const date = new Date(isoString)
+
+    if (isNaN(date.getTime())) {
+      this.err("Invalid time")
+    }
+
+    return date
+  }
+
+  /**
+   * Parses a boolean value (true or false).
+   */
+  private parseBool(): boolean {
     if (this.match("true")) {
       this.advance(4)
       return true
     }
+
     if (this.match("false")) {
       this.advance(5)
       return false
     }
+
     this.err("Invalid boolean")
     return false
   }
 
-  private parseNumber = (): number => {
+  /**
+   * Parses a number value (integer, float, or special values like inf/nan).
+   */
+  private parseNumber(): number {
+    // Handle special float values
     if (this.match("inf") || this.match("+inf")) {
-      this.advance(this.match("inf") ? 3 : 4)
+      const length = this.match("inf") ? 3 : 4
+      this.advance(length)
       return Infinity
     }
+
     if (this.match("-inf")) {
       this.advance(4)
       return -Infinity
     }
+
     if (this.match("nan") || this.match("+nan")) {
-      this.advance(this.match("nan") ? 3 : 4)
+      const length = this.match("nan") ? 3 : 4
+      this.advance(length)
       return NaN
     }
+
     if (this.match("-nan")) {
       this.advance(4)
       return NaN
     }
 
-    let s = ""
-    if (/[+\-]/.test(this.peek())) {
-      s += this.peek()
+    // Parse regular number
+    let numberString = ""
+
+    // Optional sign
+    const firstChar = this.peek()
+    const hasSign = /[+\-]/.test(firstChar)
+    if (hasSign) {
+      numberString = numberString + firstChar
       this.advance()
     }
-    if (this.peek() === "0" && /[xob]/.test(this.peek(1))) {
-      if (s) this.err("Sign not allowed with hex/oct/bin")
-      const t = this.peek(1)
-      this.advance(2)
-      let d = ""
-      while (/[0-9A-Fa-f_]/.test(this.peek())) {
-        if (this.peek() !== "_") d += this.peek()
-        this.advance()
+
+    // Check for hex, octal, or binary
+    const isZero = this.peek() === "0"
+    const hasBasePrefix = /[xob]/.test(this.peek(1))
+
+    if (isZero && hasBasePrefix) {
+      if (numberString.length > 0) {
+        this.err("Sign not allowed with hex/oct/bin")
       }
-      const v = parseInt(d, t === "x" ? 16 : t === "o" ? 8 : 2)
-      if (isNaN(v)) this.err("Invalid integer")
-      return v
+
+      return this.parseIntegerWithBase()
     }
-    while (/[0-9._eE+\-]/.test(this.peek())) {
-      s += this.peek()
-      this.advance()
-    }
-    if (
-      !/^[+-]?(?:0|[1-9](?:_?[0-9])*)(?:\.[0-9](?:_?[0-9])*)?(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/.test(
-        s,
-      )
-    )
-      this.err(`Invalid number ${s}`)
-    const n = parseFloat(s.replace(/_/g, ""))
-    if (isNaN(n)) this.err("Invalid number")
-    return n
+
+    // Parse decimal number
+    return this.parseDecimalNumber(numberString)
   }
 
-  private parseString = (multilineAllowed: boolean): string => {
-    const start = this.peek()
-    const isMulti = this.input.startsWith(start.repeat(3), this.idx)
-    if (isMulti && !multilineAllowed) this.err("Multiline not allowed")
-    const delim = isMulti ? start.repeat(3) : start
-    this.advance(delim.length)
-    if (isMulti && this.peek() === "\n") this.advance()
-    else if (isMulti && this.peek() === "\r" && this.peek(1) === "\n") this.advance(2)
+  /**
+   * Parses an integer in hex, octal, or binary format.
+   */
+  private parseIntegerWithBase(): number {
+    const baseChar = this.peek(1)
+    this.advance(2) // Skip "0x", "0o", or "0b"
 
-    let res = ""
-    while (this.idx < this.input.length) {
-      if (this.input.startsWith(delim, this.idx)) {
-        if (isMulti) {
-          let c = 0
-          while (this.peek(c) === start && c < 5) c++
-          if (c > 2) {
-            this.advance(c)
-            return res + start.repeat(c - 3)
+    let digits = ""
+    const maxDigits = 1000 // Safety limit
+
+    while (digits.length < maxDigits) {
+      const currentChar = this.peek()
+      const isValidChar = /[0-9A-Fa-f_]/.test(currentChar)
+
+      if (isValidChar) {
+        if (currentChar !== "_") {
+          digits = digits + currentChar
+        }
+        this.advance()
+      } else {
+        break
+      }
+    }
+
+    let base = 10
+    if (baseChar === "x") {
+      base = 16
+    } else if (baseChar === "o") {
+      base = 8
+    } else if (baseChar === "b") {
+      base = 2
+    }
+
+    const value = parseInt(digits, base)
+    if (isNaN(value)) {
+      this.err("Invalid integer")
+    }
+
+    return value
+  }
+
+  /**
+   * Parses a decimal number (integer or float).
+   */
+  private parseDecimalNumber(prefix: string): number {
+    let numberString = prefix
+    const maxLength = 1000 // Safety limit
+
+    while (numberString.length < maxLength) {
+      const currentChar = this.peek()
+      const isNumberChar = /[0-9._eE+\-]/.test(currentChar)
+
+      if (isNumberChar) {
+        numberString = numberString + currentChar
+        this.advance()
+      } else {
+        break
+      }
+    }
+
+    // Validate number format
+    const validPattern =
+      /^[+-]?(?:0|[1-9](?:_?[0-9])*)(?:\.[0-9](?:_?[0-9])*)?(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/
+    if (!validPattern.test(numberString)) {
+      this.err(`Invalid number ${numberString}`)
+    }
+
+    // Remove underscores and parse
+    const cleaned = numberString.replace(/_/g, "")
+    const value = parseFloat(cleaned)
+
+    if (isNaN(value)) {
+      this.err("Invalid number")
+    }
+
+    return value
+  }
+
+  /**
+   * Parses a string value (basic or literal, single-line or multi-line).
+   */
+  private parseString(multilineAllowed: boolean): string {
+    const quoteChar = this.peek()
+    const tripleQuote = quoteChar.repeat(3)
+    const isMultiline = this.input.startsWith(tripleQuote, this.idx)
+
+    if (isMultiline && !multilineAllowed) {
+      this.err("Multiline not allowed")
+    }
+
+    const delimiter = isMultiline ? tripleQuote : quoteChar
+    this.advance(delimiter.length)
+
+    // Skip optional newline after opening delimiter in multiline strings
+    if (isMultiline) {
+      if (this.peek() === "\n") {
+        this.advance()
+      } else if (this.peek() === "\r" && this.peek(1) === "\n") {
+        this.advance(2)
+      }
+    }
+
+    return this.parseStringContent(quoteChar, delimiter, isMultiline)
+  }
+
+  /**
+   * Parses the content of a string until the closing delimiter.
+   */
+  private parseStringContent(quoteChar: string, delimiter: string, isMultiline: boolean): string {
+    let result = ""
+    const maxLength = 1000000 // Safety limit
+
+    while (this.idx < this.input.length && result.length < maxLength) {
+      // Check for closing delimiter
+      if (this.input.startsWith(delimiter, this.idx)) {
+        if (isMultiline) {
+          // Handle extra quotes in multiline strings (up to 5 total)
+          const closingResult = this.handleMultilineStringClosing(quoteChar)
+          if (closingResult !== null) {
+            return result + closingResult
           }
         } else {
           this.advance()
-          return res
+          return result
         }
       }
-      const c = this.peek()
-      if (!isMulti && /[\r\n]/.test(c)) this.err("Unterminated string")
-      // eslint-disable-next-line quotes
-      if (start === '"' && c === "\\") {
+
+      const currentChar = this.peek()
+
+      // Single-line strings cannot contain unescaped newlines
+      if (!isMultiline && /[\r\n]/.test(currentChar)) {
+        this.err("Unterminated string")
+      }
+
+      // Handle escape sequences in basic strings (double quotes)
+      const isBasicString = quoteChar === "\""
+      const isEscape = currentChar === "\\"
+
+      if (isBasicString && isEscape) {
         this.advance()
-        if (isMulti && /[ \t\r\n]/.test(this.peek())) {
-          while (/[ \t\r\n]/.test(this.peek())) this.advance()
-        } else res += this.parseEscape()
+        const escaped = this.handleStringEscape(isMultiline)
+        result = result + escaped
       } else {
-        res += c
+        result = result + currentChar
         this.advance()
       }
     }
+
     this.err("Unterminated string")
     return ""
   }
 
-  private parseEscape = (): string => {
-    const c = this.peek()
+  /**
+   * Handles closing of multiline strings with extra quotes.
+   * Returns extra quotes if found, or null to continue parsing.
+   */
+  private handleMultilineStringClosing(quoteChar: string): string | null {
+    let quoteCount = 0
+    const maxQuotes = 5
+
+    while (quoteCount <= maxQuotes) {
+      const charAtOffset = this.peek(quoteCount)
+      if (charAtOffset === quoteChar) {
+        quoteCount = quoteCount + 1
+      } else {
+        break
+      }
+    }
+
+    if (quoteCount > 2) {
+      this.advance(quoteCount)
+      const extraQuotes = quoteCount - 3
+      return quoteChar.repeat(extraQuotes)
+    }
+
+    return null
+  }
+
+  /**
+   * Handles escape sequences in basic strings and line-ending backslash.
+   */
+  private handleStringEscape(isMultiline: boolean): string {
+    const escapeChar = this.peek()
+
+    // Line-ending backslash in multiline strings (trim whitespace)
+    if (isMultiline && /[ \t\r\n]/.test(escapeChar)) {
+      while (this.idx < this.input.length) {
+        const currentChar = this.peek()
+        const isWhitespace = /[ \t\r\n]/.test(currentChar)
+        if (isWhitespace) {
+          this.advance()
+        } else {
+          break
+        }
+      }
+      return ""
+    }
+
+    return this.parseEscape()
+  }
+
+  /**
+   * Parses a single escape sequence and returns the resulting character.
+   */
+  private parseEscape(): string {
+    const escapeChar = this.peek()
     this.advance()
-    const escapes: Record<string, string> = {
+
+    // Common single-character escapes
+    const escapeMap: Record<string, string> = {
       b: "\b",
       f: "\f",
       n: "\n",
       r: "\r",
       t: "\t",
-      // eslint-disable-next-line quotes
-      '"': '"',
+      e: "\x1B",
+      "\"": "\"",
       "\\": "\\",
     }
-    if (escapes[c]) return escapes[c]
-    if (c === "u" || c === "U") {
-      const len = c === "u" ? 4 : 8,
-        code = this.input.substr(this.idx, len)
-      this.advance(len)
-      return String.fromCodePoint(parseInt(code, 16))
+
+    const mappedEscape = escapeMap[escapeChar]
+    if (mappedEscape) {
+      return mappedEscape
     }
-    return c
+
+    // Hex escape: \xHH
+    if (escapeChar === "x") {
+      return this.parseHexEscape(2)
+    }
+
+    // Unicode escape: \uHHHH
+    if (escapeChar === "u") {
+      return this.parseUnicodeEscape(4)
+    }
+
+    // Unicode escape: \UHHHHHHHH
+    if (escapeChar === "U") {
+      return this.parseUnicodeEscape(8)
+    }
+
+    this.err(`Invalid escape sequence '\\${escapeChar}'`)
+    return ""
   }
 
-  private parseArray = (): TomlValue[] => {
-    const arr: TomlValue[] = []
-    this.advance()
-    while (this.idx < this.input.length) {
+  /**
+   * Parses a hex escape sequence (\xHH).
+   */
+  private parseHexEscape(digitCount: number): string {
+    const code = this.input.substr(this.idx, digitCount)
+    const pattern = new RegExp(`^[0-9A-Fa-f]{${digitCount}}$`)
+
+    if (!pattern.test(code)) {
+      this.err("Invalid \\xHH escape sequence")
+    }
+
+    this.advance(digitCount)
+    const codePoint = parseInt(code, 16)
+    return String.fromCodePoint(codePoint)
+  }
+
+  /**
+   * Parses a Unicode escape sequence (\uHHHH or \UHHHHHHHH).
+   */
+  private parseUnicodeEscape(digitCount: number): string {
+    const code = this.input.substr(this.idx, digitCount)
+    const pattern = new RegExp(`^[0-9A-Fa-f]{${digitCount}}$`)
+
+    const escapeType = digitCount === 4 ? "\\uHHHH" : "\\UHHHHHHHH"
+    if (!pattern.test(code)) {
+      this.err(`Invalid ${escapeType} escape sequence`)
+    }
+
+    this.advance(digitCount)
+    const codePoint = parseInt(code, 16)
+
+    // Validate Unicode scalar value
+    const isSurrogate = codePoint >= 0xd800 && codePoint <= 0xdfff
+    const isOutOfRange = codePoint > 0x10ffff
+
+    if (isSurrogate || isOutOfRange) {
+      this.err("Invalid Unicode scalar value")
+    }
+
+    return String.fromCodePoint(codePoint)
+  }
+
+  /**
+   * Parses an array value.
+   */
+  private parseArray(): TomlValue[] {
+    const array: TomlValue[] = []
+    this.advance() // Skip opening '['
+
+    const maxElements = 100000 // Safety limit
+
+    while (this.idx < this.input.length && array.length < maxElements) {
       this.skipIgnored()
+
+      // Check for closing bracket
       if (this.peek() === "]") {
         this.advance()
-        return arr
+        return array
       }
-      arr.push(this.parseValue())
+
+      // Parse array element
+      const value = this.parseValue()
+      array.push(value)
+
       this.skipIgnored()
-      if (this.peek() === ",") {
+
+      // Check for comma or closing bracket
+      const nextChar = this.peek()
+      if (nextChar === ",") {
         this.advance()
         continue
       }
-      if (this.peek() === "]") {
+
+      if (nextChar === "]") {
         this.advance()
-        return arr
+        return array
       }
+
       this.err("Expected ',' or ']'")
     }
+
     this.err("Unterminated array")
     return []
   }
 
-  private parseInlineTable = (): TomlTable => {
-    const t: TomlTable = {}
-    Object.defineProperty(t, INLINE_TABLE, { value: true })
-    this.advance()
-    while (this.idx < this.input.length) {
+  /**
+   * Parses an inline table value.
+   */
+  private parseInlineTable(): TomlTable {
+    const table: TomlTable = {}
+    Object.defineProperty(table, INLINE_TABLE, { value: true })
+
+    this.advance() // Skip opening '{'
+
+    const maxPairs = 10000 // Safety limit
+    let pairCount = 0
+
+    while (this.idx < this.input.length && pairCount < maxPairs) {
       this.skipIgnored()
+
+      // Check for closing brace
       if (this.peek() === "}") {
         this.advance()
-        return t
+        return table
       }
+
+      // Parse key-value pair
       const keys = this.parseKeys()
       this.skipIgnored()
-      if (this.peek() !== "=") this.err("Expected '='")
-      this.advance()
-      this.skipIgnored()
-      const val = this.parseValue()
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let cur: any = t
-      keys.forEach((key, i) => {
-        if (i === keys.length - 1) cur[key] = val
-        else {
-          if (!cur[key]) {
-            const n = {}
-            Object.defineProperty(n, INLINE_TABLE, { value: true })
-            cur[key] = n
-          }
-          cur = cur[key]
-        }
-      })
+      if (this.peek() !== "=") {
+        this.err("Expected '='")
+      }
+      this.advance()
+
       this.skipIgnored()
-      if (this.peek() === ",") {
+      const value = this.parseValue()
+
+      // Assign value using dotted key path
+      this.assignInlineTableValue(table, keys, value)
+
+      pairCount = pairCount + 1
+      this.skipIgnored()
+
+      // Check for comma or closing brace
+      const nextChar = this.peek()
+      if (nextChar === ",") {
         this.advance()
         continue
       }
-      if (this.peek() === "}") {
+
+      if (nextChar === "}") {
         this.advance()
-        return t
+        return table
       }
+
       this.err("Expected ',' or '}'")
     }
+
     this.err("Unterminated inline table")
     return {}
+  }
+
+  /**
+   * Assigns a value in an inline table using a dotted key path.
+   */
+  private assignInlineTableValue(table: TomlTable, keys: string[], value: TomlValue): void {
+    let current: TomlTable = table
+    const keyCount = keys.length
+
+    let i = 0
+    while (i < keyCount) {
+      const key = keys[i]
+      const isLastKey = i === keyCount - 1
+
+      if (isLastKey) {
+        current[key] = value
+      } else {
+        // Create intermediate inline table if needed
+        let next = current[key]
+
+        if (!next) {
+          const nestedTable: TomlTable = {}
+          Object.defineProperty(nestedTable, INLINE_TABLE, { value: true })
+          current[key] = nestedTable
+          next = nestedTable
+        }
+
+        if (
+          typeof next === "object" &&
+          next !== null &&
+          !Array.isArray(next) &&
+          !(next instanceof Date)
+        ) {
+          current = next as TomlTable
+        } else {
+          this.err(`Key '${key}' is already defined as a value`)
+        }
+      }
+
+      i = i + 1
+    }
   }
 }
 
